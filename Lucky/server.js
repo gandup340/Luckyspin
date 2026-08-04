@@ -685,6 +685,11 @@ app.get("/api/facebook/webhook", (req, res) => {
   if (mode === "subscribe" && FACEBOOK_VERIFY_TOKEN && token === FACEBOOK_VERIFY_TOKEN) {
     return res.status(200).send(challenge);
   }
+  if (!FACEBOOK_VERIFY_TOKEN) {
+    console.warn("Facebook webhook verify failed: FACEBOOK_VERIFY_TOKEN is not set on this host");
+  } else if (mode === "subscribe") {
+    console.warn("Facebook webhook verify failed: verify token mismatch");
+  }
   return res.sendStatus(403);
 });
 
