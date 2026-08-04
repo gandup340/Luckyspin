@@ -1,0 +1,176 @@
+{
+  "conversations": [
+    {
+      "id": "7639fbcc-3cc7-4e84-9e36-15e31044c20a",
+      "name": "Visitor",
+      "createdAt": 1784947774199,
+      "updatedAt": 1784947774199,
+      "unreadAdmin": 0,
+      "messages": [
+        {
+          "id": "b4540c63-50a2-4fdd-ad7f-6583e8481442",
+          "from": "system",
+          "text": "Welcome to LUCKY VIPS GAME Support. An agent will reply here on the site.",
+          "at": 1784947774199
+        }
+      ]
+    },
+    {
+      "id": "215f12db-709c-469f-9a7f-ff266af7d3a6",
+      "name": "Visitor",
+      "createdAt": 1784947835657,
+      "updatedAt": 1784947858418,
+      "unreadAdmin": 0,
+      "messages": [
+        {
+          "id": "35138683-eb4d-4abc-a426-0832f09a796d",
+          "from": "system",
+          "text": "Welcome to LUCKY VIPS GAME Support. An agent will reply here on the site.",
+          "at": 1784947835657
+        },
+        {
+          "id": "831b0902-f052-4fa2-9a3d-75460cdce3a5",
+          "from": "customer",
+          "text": "hey",
+          "at": 1784947845506
+        },
+        {
+          "id": "93f2611a-0991-4901-8d9b-1c2aef8a2eb1",
+          "from": "admin",
+          "text": "how are you doing",
+          "at": 1784947858418
+        }
+      ]
+    },
+    {
+      "id": "d682377b-c086-4aad-9b56-29290af159cd",
+      "name": "pandey gandu",
+      "phone": "55555554546",
+      "email": "gandup340@gmail.com",
+      "createdAt": 1784958127759,
+      "updatedAt": 1785262369869,
+      "unreadAdmin": 0,
+      "messages": [
+        {
+          "id": "beedd399-b59a-476b-bb5a-993bdb232b8a",
+          "from": "system",
+          "text": "Welcome to LUCKY VIPS GAME Support. An agent will reply here on the site.",
+          "at": 1784958127759
+        },
+        {
+          "id": "2777e1bf-ba7c-4765-9ac2-877e7551438e",
+          "from": "customer",
+          "text": "hey",
+          "at": 1784958130667
+        },
+        {
+          "id": "211d587b-370e-45cc-94f9-bea38f51c66e",
+          "from": "customer",
+          "text": "Photo",
+          "at": 1784958153935,
+          "attachment": {
+            "kind": "image",
+            "url": "/uploads/chat/1784958153919_6064380208e94116.png",
+            "name": "Q2-par.png",
+            "mime": "image/png",
+            "size": 74546
+          }
+        },
+        {
+          "id": "d2f1ec8d-8886-430e-82e7-c7ca2898ad2e",
+          "from": "admin",
+          "text": "sure sir I will add this",
+          "at": 1784958556034
+        },
+        {
+          "id": "6a357c15-83cd-4f3e-94d6-4c5b72e1f95c",
+          "from": "customer",
+          "text": "okay mate",
+          "at": 1784958567233
+        },
+        {
+          "id": "4364b299-6c2c-4510-81f3-627756c53bdd",
+          "from": "admin",
+          "text": "🤷‍♀️🤷‍♀️",
+          "at": 1784958601162
+        },
+        {
+          "id": "a7d22cc3-bb99-4ac9-a18e-93e3d0621017",
+          "from": "customer",
+          "text": "hey",
+          "at": 1785262369869
+        }
+      ],
+      "customerId": "6fdbd170-24e7-4d48-b3d8-1610ea98926c"
+    },
+    {
+      "id": "a739b589-215e-4347-a85b-773cc99d536d",
+      "name": "LUCKY VIPS GAME",
+      "phone": "2345678",
+      "email": "kjj@gmail.com",
+      "createdAt": 1785786791057,
+      "updatedAt": 1785787777745,
+      "unreadAdmin": 0,
+      "messages": [
+        {
+          "id": "bb276be6-d136-4a21-b6bf-4559985ec955",
+          "from": "system",
+          "text": "Welcome to LUCKY VIPS GAME Support. An agent will reply here on the site.",
+          "at": 1785786791057
+        },
+        {
+          "id": "be866f43-6c1a-4154-8568-5af7bb528536",
+          "from": "admin",
+          "text": "hi how may I help you",
+          "at": 1785786816061
+        },
+        {
+          "id": "321c1754-1864-4033-a660-6dcdb85aebdb",
+          "from": "customer",
+          "text": "this is my payment can you add to juwa",
+          "at": 1785786857056,
+          "attachment": {
+            "kind": "image",
+            "url": "/uploads/chat/1785786857026_aec98842d10696e2.png",
+            "name": "Q2-par.png",
+            "mime": "image/png",
+            "size": 74546
+          }
+        },
+        {
+          "id": "87a523f1-00d1-4470-96a6-c6f50c35a950",
+          "from": "admin",
+          "text": "just a minute",
+          "at": 1785787777745
+        }
+      ],
+      "customerId": "65c7e22f-9c43-4efe-80d3-8c720f852e4a"
+    },
+    {
+      "id": "3e23c244-19ca-4387-8c6c-5aa7deb2bc9f",
+      "channel": "facebook",
+      "psid": "TEST_PSID_LOCAL_001",
+      "name": "Facebook User",
+      "phone": "",
+      "email": "",
+      "createdAt": 1785862870758,
+      "updatedAt": 1785862871316,
+      "unreadAdmin": 1,
+      "messages": [
+        {
+          "id": "7e9670ce-8c2d-4f57-b769-0f46cfaf6e52",
+          "from": "system",
+          "text": "Facebook Messenger conversation. Support/Admin replies here go to Messenger.",
+          "at": 1785862870758
+        },
+        {
+          "id": "8df3d891-05c2-406d-95a4-251a3cd346e9",
+          "from": "customer",
+          "text": "Local Messenger test - hello from simulated Facebook",
+          "at": 1785862866889,
+          "facebookMid": "mid.local.test.f9b7c6d9bd40492d8e56f1fe0705bdd5"
+        }
+      ]
+    }
+  ]
+}

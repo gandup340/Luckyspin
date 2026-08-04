@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LUCKY VIPS GAME Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <meta name="theme-color" content="#ffffff" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+    <div id="login-view" class="login-view">
+      <form class="login-card" id="login-form">
+        <p class="login-brand">LUCKY VIPS GAME</p>
+        <h1 id="login-title">Admin</h1>
+        <p class="login-sub" id="login-sub">Edit links and chat with customers</p>
+        <label>
+          Username
+          <input type="text" id="login-username" value="admin" required autocomplete="username" />
+        </label>
+        <label>
+          Password
+          <input type="password" id="login-password" required autocomplete="current-password" />
+        </label>
+        <button type="submit" class="btn btn-gold">Sign in</button>
+        <p class="login-error" id="login-error" hidden></p>
+      </form>
+    </div>
+
+    <div id="app-view" class="app-view" hidden>
+      <header class="mobile-topbar">
+        <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <strong class="mobile-topbar-title" id="mobile-topbar-title">Chats</strong>
+        <span class="nav-badge" id="mobile-chat-badge" hidden>0</span>
+      </header>
+
+      <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <div class="side-brand">LUCKY VIPS GAME Admin</div>
+          <button type="button" class="menu-close" id="menu-close" aria-label="Close menu">×</button>
+        </div>
+        <nav class="side-nav">
+          <button type="button" class="nav-btn is-active" data-tab="chat" data-title="Chats">
+            Chats <span class="nav-badge" id="chat-nav-badge" hidden>0</span>
+          </button>
+          <button type="button" class="nav-btn" data-tab="games" data-title="Games" data-admin-only>Games</button>
+          <button type="button" class="nav-btn" data-tab="winners" data-title="Top 3">Top 3</button>
+          <button type="button" class="nav-btn" data-tab="facebook" data-title="Facebook" data-admin-only>Facebook</button>
+          <button type="button" class="nav-btn" data-tab="contact" data-title="Contact" data-admin-only>Contact</button>
+          <button type="button" class="nav-btn" data-tab="payments" data-title="Payments" data-admin-only>Payments</button>
+          <button type="button" class="nav-btn" data-tab="spin" data-title="Spin game">Spin game</button>
+          <button type="button" class="nav-btn" data-tab="customers" data-title="Customers">Customers</button>
+          <button type="button" class="nav-btn" data-tab="users" data-title="Users" data-admin-only>Users</button>
+        </nav>
+        <div class="side-foot">
+          <p class="signed-in" id="signed-in"></p>
+          <a href="/" target="_blank" rel="noopener">View site</a>
+          <button type="button" class="linkish" id="logout-btn">Log out</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="panel is-active" id="tab-chat">
+          <header class="panel-head chat-desktop-head">
+            <h2>Chats</h2>
+            <p>Facebook Messenger inbox — reply here and players get it in Messenger.</p>
+          </header>
+          <div class="chat-layout is-list" id="chat-layout">
+            <div class="convo-pane">
+              <div class="convo-pane-head">
+                <h2>Chats</h2>
+              </div>
+              <div class="convo-list" id="convo-list"></div>
+            </div>
+            <div class="convo-thread">
+              <div class="thread-head" id="thread-head">
+                <button type="button" class="thread-back" id="thread-back" aria-label="Back to chats">
+                  <span aria-hidden="true">←</span>
+                </button>
+                <div class="thread-head-main">
+                  <strong id="thread-name">Select a conversation</strong>
+                  <div class="thread-contact" id="thread-contact" hidden></div>
+                </div>
+              </div>
+              <div class="thread-body" id="thread-body"></div>
+              <form class="thread-form" id="thread-form" hidden>
+                <div class="thread-attach-row">
+                  <label class="chat-attach-btn" title="Attach photo, video, or document">
+                    <input
+                      type="file"
+                      id="thread-file"
+                      accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      hidden
+                    />
+                    Attach
+                  </label>
+                  <span class="chat-file-name" id="thread-file-name" hidden></span>
+                  <button type="button" class="chat-file-clear" id="thread-file-clear" hidden aria-label="Remove attachment">
+                    ×
+                  </button>
+                </div>
+                <div class="thread-compose">
+                  <input type="text" id="thread-input" placeholder="Reply to customer…" autocomplete="off" />
+                  <button type="submit" class="btn btn-gold">Send</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-games">
+          <header class="panel-head row">
+            <div>
+              <h2>Games</h2>
+              <p>Update player & agent links, names, and images.</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="add-game-btn">Add game</button>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table" id="games-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Image URL</th>
+                  <th>Player link</th>
+                  <th>Agent link</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="games-body"></tbody>
+            </table>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-gold" id="save-games-btn">Save games</button>
+            <span class="status" id="games-status"></span>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-winners">
+          <header class="panel-head">
+            <h2>Yesterday's top 3</h2>
+            <p>Edit the names and amounts shown on the homepage winners strip.</p>
+          </header>
+          <form class="winners-form" id="winners-form">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Player name</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="winners-body"></tbody>
+              </table>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Save top 3</button>
+              <span class="status" id="winners-status"></span>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel" id="tab-facebook">
+          <header class="panel-head row">
+            <div>
+              <h2>Facebook pages</h2>
+              <p>Official pages shown on the site and dock menu.</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="add-fb-btn">Add page</button>
+          </header>
+          <div id="fb-list" class="edit-list"></div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-gold" id="save-fb-btn">Save Facebook</button>
+            <span class="status" id="fb-status"></span>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-contact">
+          <header class="panel-head">
+            <h2>Contact links</h2>
+            <p>Messenger is the main support chat. WhatsApp and Telegram are floating shortcuts.</p>
+          </header>
+          <form class="contact-form" id="contact-form">
+            <label>
+              Facebook Messenger (Page username or m.me link)
+              <input type="text" id="messenger-input" placeholder="luckyvipsgame or https://m.me/luckyvipsgame" />
+            </label>
+            <label>
+              WhatsApp number (digits only, with country code)
+              <input type="text" id="whatsapp-input" placeholder="15551234567" />
+            </label>
+            <label>
+              Telegram username (without @)
+              <input type="text" id="telegram-input" placeholder="lucky_vips_game" />
+            </label>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Save contact</button>
+              <span class="status" id="contact-status"></span>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel" id="tab-payments">
+          <header class="panel-head row">
+            <div>
+              <h2>Payments</h2>
+              <p>Add payment methods and turn them on or off for the website.</p>
+            </div>
+          </header>
+
+          <form class="user-form" id="add-payment-form">
+            <h3>Add payment</h3>
+            <div class="user-form-grid payment-form-grid">
+              <label>
+                Name
+                <input type="text" id="new-payment-name" placeholder="e.g. Cash App" required maxlength="40" />
+              </label>
+              <label class="toggle-label">
+                <span>Enabled on site</span>
+                <input type="checkbox" id="new-payment-enabled" checked />
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Add payment</button>
+              <span class="status" id="payments-status"></span>
+            </div>
+          </form>
+
+          <div class="table-wrap" style="margin-top: 1.25rem">
+            <table class="data-table" id="payments-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="payments-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-spin">
+          <header class="panel-head row">
+            <div>
+              <h2>Spin game</h2>
+              <p>Edit up to 13 wheel prizes ($1–$10 plus No Prize slots). Disabled prizes are hidden.</p>
+            </div>
+            <a class="btn btn-gold" href="/spin/" target="_blank" rel="noopener">Open spin page</a>
+          </header>
+          <form class="winners-form" id="spin-form">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Prize label</th>
+                    <th>Enabled</th>
+                  </tr>
+                </thead>
+                <tbody id="spin-body"></tbody>
+              </table>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Save prizes</button>
+              <span class="status" id="spin-status"></span>
+            </div>
+          </form>
+          <div class="table-wrap" style="margin-top: 1.5rem">
+            <h3>Recent claims</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Prize</th>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Spun</th>
+                  <th>Next spin</th>
+                </tr>
+              </thead>
+              <tbody id="spin-claims-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-customers">
+          <header class="panel-head row">
+            <div>
+              <h2>Customers</h2>
+              <p>All customer names, phone numbers, and emails from the site chat.</p>
+            </div>
+          </header>
+
+          <form class="user-form" id="add-customer-form">
+            <h3>Add customer</h3>
+            <div class="user-form-grid">
+              <label>
+                Name
+                <input type="text" id="new-customer-name" placeholder="Full name" required />
+              </label>
+              <label>
+                Phone
+                <input type="tel" id="new-customer-phone" placeholder="Phone number" required />
+              </label>
+              <label>
+                Email
+                <input type="email" id="new-customer-email" placeholder="email@example.com" required />
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Add customer</button>
+              <span class="status" id="customers-status"></span>
+            </div>
+          </form>
+
+          <div class="table-wrap" style="margin-top: 1.25rem">
+            <table class="data-table" id="customers-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="customers-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-users" data-admin-only>
+          <header class="panel-head row">
+            <div>
+              <h2>Users</h2>
+              <p>Add Admin (full access) or Support (chat, spin, top 3, customers).</p>
+            </div>
+          </header>
+
+          <form class="user-form" id="add-user-form">
+            <h3>Add user</h3>
+            <div class="user-form-grid user-form-grid-4">
+              <label>
+                Name
+                <input type="text" id="new-user-name" placeholder="Display name" required />
+              </label>
+              <label>
+                Username
+                <input type="text" id="new-user-username" placeholder="username" required minlength="3" />
+              </label>
+              <label>
+                Role
+                <select id="new-user-role" required>
+                  <option value="support">Support — chat, spin, top 3, customers</option>
+                  <option value="admin">Admin — full access</option>
+                </select>
+              </label>
+              <label>
+                Password
+                <input type="password" id="new-user-password" placeholder="Min 6 characters (10 in production)" required minlength="6" />
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Add user</button>
+              <span class="status" id="users-status"></span>
+            </div>
+          </form>
+
+          <div class="table-wrap" style="margin-top: 1.25rem">
+            <table class="data-table" id="users-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>New password</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "customers": [
+    {
+      "id": "0bcaf5cd-ad34-48dc-aa7e-bf9673361f82",
+      "name": "Test User",
+      "phone": "5551234567",
+      "email": "test@example.com",
+      "createdAt": 1784955043215,
+      "updatedAt": 1784955043215
+    },
+    {
+      "id": "b169e237-2df1-4305-8b22-a11a9d0dc99d",
+      "name": "Test",
+      "phone": "8665684234",
+      "email": "t@example.com",
+      "createdAt": 1784956608129,
+      "updatedAt": 1784956608129
+    },
+    {
+      "id": "6fdbd170-24e7-4d48-b3d8-1610ea98926c",
+      "name": "pandey gandu",
+      "phone": "55555554546",
+      "email": "gandup340@gmail.com",
+      "createdAt": 1784958127751,
+      "updatedAt": 1785862725590
+    },
+    {
+      "id": "65c7e22f-9c43-4efe-80d3-8c720f852e4a",
+      "name": "LUCKY VIPS GAME",
+      "phone": "2345678",
+      "email": "kjj@gmail.com",
+      "createdAt": 1785786734884,
+      "updatedAt": 1785862725593
+    }
+  ]
+}

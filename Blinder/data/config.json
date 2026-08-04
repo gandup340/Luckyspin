@@ -1,0 +1,390 @@
+{
+  "whatsapp": "0000000000",
+  "telegram": "lucky_vips_game",
+  "messenger": "luckyvipsgame",
+  "facebook": [
+    {
+      "id": "fb1",
+      "name": "LUCKY VIPS GAME Official",
+      "url": "https://www.facebook.com/",
+      "desc": "Announcements & promos"
+    },
+    {
+      "id": "fb2",
+      "name": "LUCKY VIPS GAME Players",
+      "url": "https://www.facebook.com/",
+      "desc": "Community & winners"
+    },
+    {
+      "id": "fb3",
+      "name": "LUCKY VIPS GAME Agents",
+      "url": "https://www.facebook.com/",
+      "desc": "Agent network updates"
+    },
+    {
+      "id": "fb4",
+      "name": "LUCKY VIPS GAME Support",
+      "url": "https://www.facebook.com/",
+      "desc": "Help & verified contact"
+    }
+  ],
+  "winners": [
+    {
+      "rank": 1,
+      "name": "Maya Cruz",
+      "amount": "$128.40"
+    },
+    {
+      "rank": 2,
+      "name": "Jordan Lee",
+      "amount": "$97.25"
+    },
+    {
+      "rank": 3,
+      "name": "Sam Rivera",
+      "amount": "$84.10"
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_1",
+      "name": "Cash App",
+      "enabled": true
+    },
+    {
+      "id": "pay_2",
+      "name": "Venmo",
+      "enabled": true
+    },
+    {
+      "id": "pay_3",
+      "name": "Zelle",
+      "enabled": false
+    },
+    {
+      "id": "pay_4",
+      "name": "PayPal",
+      "enabled": true
+    },
+    {
+      "id": "pay_5",
+      "name": "Chime",
+      "enabled": true
+    },
+    {
+      "id": "pay_6",
+      "name": "Apple Pay",
+      "enabled": false
+    },
+    {
+      "id": "pay_7",
+      "name": "Crypto",
+      "enabled": true
+    }
+  ],
+  "games": [
+    {
+      "id": "g3",
+      "name": "Juwa",
+      "image": "assets/games/juwa.webp",
+      "player": "https://dl.juwa777.com/",
+      "agent": "http://ht.juwa777.com/"
+    },
+    {
+      "id": "g_juwa2",
+      "name": "Juwa2",
+      "image": "assets/games/juwa2.webp",
+      "player": "https://dl.juwa2.com/",
+      "agent": "http://ht.juwa2.com/"
+    },
+    {
+      "id": "g4",
+      "name": "GameVault",
+      "image": "assets/games/gamevault.webp",
+      "player": "https://download.gamevault999.com/",
+      "agent": "http://agent.gamevault999.com/"
+    },
+    {
+      "id": "g1",
+      "name": "Firekirin",
+      "image": "assets/games/firekirin.webp",
+      "player": "https://firekirin.com/",
+      "agent": "https://firekirin.xyz:8888/Store.aspx"
+    },
+    {
+      "id": "g2",
+      "name": "Orionstar",
+      "image": "assets/games/orionstar.webp",
+      "player": "http://start.orionstars.vip:8580/index.html",
+      "agent": "https://orionstars.vip:8781/Store.aspx"
+    },
+    {
+      "id": "g5",
+      "name": "CasinoRoyale",
+      "image": "assets/games/casinoroyale.webp",
+      "player": "http://m.casinoroyale07.com/",
+      "agent": "http://agent.casinoroyale07.com/adminList"
+    },
+    {
+      "id": "g6",
+      "name": "VegasSweep",
+      "image": "assets/games/vegassweep.webp",
+      "player": "http://m.lasvegassweeps.com/",
+      "agent": "http://agent.lasvegassweeps.com/adminList"
+    },
+    {
+      "id": "g7",
+      "name": "MilkyWay",
+      "image": "assets/games/milkyway.webp",
+      "player": "https://milkywayapp.xyz/",
+      "agent": "https://milkywayapp.xyz:8781/Store.aspx"
+    },
+    {
+      "id": "g8",
+      "name": "Ultra Panda",
+      "image": "assets/games/ultra-panda.webp",
+      "player": "https://www.ultrapanda.mobi/",
+      "agent": "https://ht.ultrapanda.mobi/#/manage-user/account"
+    },
+    {
+      "id": "g9",
+      "name": "Cash Frenzy",
+      "image": "assets/games/cash-frenzy.webp",
+      "player": "https://www.cashfrenzy777.com/",
+      "agent": "https://agentserver.cashfrenzy777.com/admin/login"
+    },
+    {
+      "id": "g10",
+      "name": "Pandamaster",
+      "image": "assets/games/pandamaster.webp",
+      "player": "https://pandamaster.vip:8888/index.html",
+      "agent": "https://pandamaster.vip/default.aspx"
+    },
+    {
+      "id": "g11",
+      "name": "Vblink",
+      "image": "assets/games/vblink.webp",
+      "player": "http://www.vblink777.club/",
+      "agent": "http://gm.vblink777.club/"
+    },
+    {
+      "id": "g12",
+      "name": "River Sweeps",
+      "image": "assets/games/river-sweeps.webp",
+      "player": "https://bet777.eu/",
+      "agent": "http://river-pay.com/office/login"
+    },
+    {
+      "id": "g13",
+      "name": "HighStake",
+      "image": "assets/games/highstake.webp",
+      "player": "http://dl.highstakesweeps.com/",
+      "agent": "https://ht.highstakesweeps.com/userManagement"
+    },
+    {
+      "id": "g14",
+      "name": "VegasX",
+      "image": "assets/games/vegasx.webp",
+      "player": "https://www.vegas-x.org/",
+      "agent": "https://cashier.vegas-x.org/login"
+    },
+    {
+      "id": "g15",
+      "name": "Game Room",
+      "image": "assets/games/game-room.webp",
+      "player": "https://www.gameroom777.com/",
+      "agent": "https://agentserver1.gameroom777.com/admin/login"
+    },
+    {
+      "id": "g16",
+      "name": "Blue Dragon",
+      "image": "assets/games/blue-dragon.webp",
+      "player": "http://app.bluedragon777.com/",
+      "agent": "http://agent.bluedragon777.com/Login.aspx"
+    },
+    {
+      "id": "g17",
+      "name": "Para",
+      "image": "assets/games/para.webp",
+      "player": "http://download.paracasino.net/",
+      "agent": "http://agent.paracasino.net/"
+    },
+    {
+      "id": "g18",
+      "name": "River Monster",
+      "image": "assets/games/river-monster.webp",
+      "player": "https://rm777.net/",
+      "agent": "https://rm777.net/"
+    },
+    {
+      "id": "g19",
+      "name": "Moolah",
+      "image": "assets/games/moolah.webp",
+      "player": "https://moolah.vip:8888/",
+      "agent": "https://moolah.vip:8781/default.aspx"
+    },
+    {
+      "id": "g20",
+      "name": "Sirius",
+      "image": "assets/games/sirius.webp",
+      "player": "https://m.gamesirius999.com/",
+      "agent": "https://agent.gamesirius999.com/login"
+    },
+    {
+      "id": "g21",
+      "name": "Mega Spin",
+      "image": "assets/games/mega-spin.webp",
+      "player": "https://www.megaspinsweeps.com/",
+      "agent": "https://megaspinpay.com/default.aspx"
+    },
+    {
+      "id": "g22",
+      "name": "Egames",
+      "image": "assets/games/egames.webp",
+      "player": "https://www.egame99.club/",
+      "agent": "https://pko.egame99.club/#/login"
+    },
+    {
+      "id": "g23",
+      "name": "Loot",
+      "image": "assets/games/loot.webp",
+      "player": "http://m.lootgame777.com/",
+      "agent": "http://client.lootgame777.com/login"
+    },
+    {
+      "id": "g24",
+      "name": "Casino Ignite",
+      "image": "assets/games/casino-ignite.webp",
+      "player": "https://download.casinoignitee.vip/",
+      "agent": "https://agent.casinoignitee.vip/auth/login"
+    },
+    {
+      "id": "g25",
+      "name": "Cash Machine",
+      "image": "assets/games/cash-machine.webp",
+      "player": "https://www.cashmachine777.com/",
+      "agent": "https://agentserver.cashmachine777.com/admin/login"
+    },
+    {
+      "id": "g26",
+      "name": "Vegas Roll",
+      "image": "assets/games/vegas-roll.webp",
+      "player": "https://www.vegas-roll.com/",
+      "agent": "https://backend.vegas-roll.com/admin/login"
+    },
+    {
+      "id": "g27",
+      "name": "Win Star",
+      "image": "assets/games/win-star.webp",
+      "player": "http://server.winstar99999.com:8009/",
+      "agent": "https://agent.winstar99999.com/admin/login"
+    },
+    {
+      "id": "g28",
+      "name": "Yolo",
+      "image": "assets/games/yolo.webp",
+      "player": "https://yolo777.game/",
+      "agent": "https://agent.yolo777.game/admin/auth/login"
+    },
+    {
+      "id": "g29",
+      "name": "Joker",
+      "image": "assets/games/joker.webp",
+      "player": "https://joker777.win/",
+      "agent": "https://agent.joker777.win/admin/login"
+    }
+  ],
+  "users": [
+    {
+      "id": "u_admin",
+      "username": "admin",
+      "name": "Admin",
+      "passwordHash": "$2b$12$iK1lE9okPF0iBmeZERkxKe3cYI8g5.TsRCKXbyzJMhWAJpkDPsOQG",
+      "role": "admin",
+      "createdAt": 1784950042727
+    },
+    {
+      "id": "aae03b0c-e798-457c-9a49-806a4e10beb8",
+      "username": "pandey",
+      "name": "pandey gandu",
+      "passwordHash": "$2b$12$O7wQFB4Gt/rowcAI1fZY4.z7yErwgUdLQn4.BaCBHv/HSdHum8TZK",
+      "role": "support",
+      "createdAt": 1784957134908
+    },
+    {
+      "id": "f676be3d-dac6-474f-a54a-a882a0bc3de5",
+      "username": "sup1682",
+      "name": "Support Agent",
+      "passwordHash": "384d558c68e21ba57b1c279a93134a2fd77b1288bd2ba8cba079823a7ff4f490",
+      "role": "support",
+      "createdAt": 1784957235931
+    }
+  ],
+  "spinPrizes": [
+    {
+      "id": "sp7",
+      "label": "$7",
+      "enabled": true
+    },
+    {
+      "id": "sp2",
+      "label": "$2",
+      "enabled": true
+    },
+    {
+      "id": "sp11",
+      "label": "No Prize",
+      "enabled": true
+    },
+    {
+      "id": "sp10",
+      "label": "$10",
+      "enabled": true
+    },
+    {
+      "id": "sp4",
+      "label": "$4",
+      "enabled": true
+    },
+    {
+      "id": "sp8",
+      "label": "$8",
+      "enabled": true
+    },
+    {
+      "id": "sp12",
+      "label": "No Prize",
+      "enabled": true
+    },
+    {
+      "id": "sp1",
+      "label": "$1",
+      "enabled": true
+    },
+    {
+      "id": "sp6",
+      "label": "$6",
+      "enabled": true
+    },
+    {
+      "id": "sp9",
+      "label": "$9",
+      "enabled": true
+    },
+    {
+      "id": "sp13",
+      "label": "No Prize",
+      "enabled": true
+    },
+    {
+      "id": "sp3",
+      "label": "$3",
+      "enabled": true
+    },
+    {
+      "id": "sp5",
+      "label": "$5",
+      "enabled": true
+    }
+  ]
+}

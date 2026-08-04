@@ -1,0 +1,1009 @@
+(() => {
+  const TOKEN_KEY = "lucky_vips_admin_token";
+  const USER_KEY = "lucky_vips_admin_user";
+  const IS_SUPPORT_PORTAL = location.pathname.startsWith("/support");
+  let token = localStorage.getItem(TOKEN_KEY) || "";
+  let currentUser = null;
+  try {
+    currentUser = JSON.parse(localStorage.getItem(USER_KEY) || "null");
+  } catch {
+    currentUser = null;
+  }
+  let config = null;
+  let users = [];
+  let conversations = [];
+  let activeId = null;
+  let activeMessages = [];
+  let ws;
+
+  const loginView = document.getElementById("login-view");
+  const appView = document.getElementById("app-view");
+  const loginForm = document.getElementById("login-form");
+  const loginError = document.getElementById("login-error");
+  const logoutBtn = document.getElementById("logout-btn");
+  const convoList = document.getElementById("convo-list");
+  const threadHead = document.getElementById("thread-head");
+  const threadName = document.getElementById("thread-name");
+  const threadContact = document.getElementById("thread-contact");
+  const threadBody = document.getElementById("thread-body");
+  const threadForm = document.getElementById("thread-form");
+  const threadInput = document.getElementById("thread-input");
+  const threadFile = document.getElementById("thread-file");
+  const threadFileName = document.getElementById("thread-file-name");
+  const threadFileClear = document.getElementById("thread-file-clear");
+  const chatBadge = document.getElementById("chat-nav-badge");
+  const mobileChatBadge = document.getElementById("mobile-chat-badge");
+  const chatLayout = document.getElementById("chat-layout");
+  const threadBack = document.getElementById("thread-back");
+  const menuToggle = document.getElementById("menu-toggle");
+  const menuClose = document.getElementById("menu-close");
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+  const mobileTopbarTitle = document.getElementById("mobile-topbar-title");
+
+  async function api(url, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+
+  function showApp(loggedIn) {
+    loginView.hidden = loggedIn;
+    appView.hidden = !loggedIn;
+  }
+
+  function setStatus(id, text, isError) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("error", !!isError);
+  }
+
+  function uid(prefix) {
+    return `${prefix}${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  function userRole() {
+    return String(currentUser?.role || "").toLowerCase() === "support" ? "support" : "admin";
+  }
+
+  function isAdminUser() {
+    return userRole() === "admin";
+  }
+
+  function applyRoleAccess() {
+    const admin = isAdminUser();
+    document.querySelectorAll("[data-admin-only]").forEach((el) => {
+      el.hidden = !admin;
+    });
+    const brand = document.querySelector(".side-brand");
+    if (brand) brand.textContent = admin ? "LUCKY VIPS GAME Admin" : "LUCKY VIPS GAME Support";
+    document.title = admin ? "LUCKY VIPS GAME Admin" : "LUCKY VIPS GAME Support";
+    if (!admin) {
+      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("is-active"));
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
+      document.querySelector('.nav-btn[data-tab="chat"]')?.classList.add("is-active");
+      document.getElementById("tab-chat")?.classList.add("is-active");
+      if (mobileTopbarTitle) mobileTopbarTitle.textContent = "Chats";
+      showChatList();
+    }
+  }
+
+  function applySupportPortalLogin() {
+    if (!IS_SUPPORT_PORTAL) return;
+    const title = document.getElementById("login-title");
+    const sub = document.getElementById("login-sub");
+    if (title) title.textContent = "Support";
+    if (sub) sub.textContent = "Reply to website and Facebook Messenger chats";
+    document.title = "LUCKY VIPS GAME Support";
+  }
+
+  function setMenuOpen(open) {
+    appView?.classList.toggle("menu-open", open);
+    if (menuToggle) menuToggle.setAttribute("aria-expanded", String(open));
+    if (sidebarBackdrop) sidebarBackdrop.hidden = !open;
+    document.body.classList.toggle("menu-lock", open);
+  }
+
+  function showChatList() {
+    chatLayout?.classList.add("is-list");
+    chatLayout?.classList.remove("is-thread");
+    if (mobileTopbarTitle) mobileTopbarTitle.textContent = "Chats";
+  }
+
+  function showChatThread() {
+    chatLayout?.classList.add("is-thread");
+    chatLayout?.classList.remove("is-list");
+    if (mobileTopbarTitle) {
+      mobileTopbarTitle.textContent = threadName?.textContent || "Chat";
+    }
+  }
+
+  function setUnreadBadges(count) {
+    const show = count > 0;
+    [chatBadge, mobileChatBadge].forEach((badge) => {
+      if (!badge) return;
+      badge.hidden = !show;
+      badge.textContent = String(count);
+    });
+  }
+
+  menuToggle?.addEventListener("click", () => setMenuOpen(!appView.classList.contains("menu-open")));
+  menuClose?.addEventListener("click", () => setMenuOpen(false));
+  sidebarBackdrop?.addEventListener("click", () => setMenuOpen(false));
+  threadBack?.addEventListener("click", () => {
+    activeId = null;
+    threadForm.hidden = true;
+    if (threadName) threadName.textContent = "Select a conversation";
+    if (threadContact) threadContact.hidden = true;
+    threadBody.innerHTML = "";
+    showChatList();
+    renderConvoList();
+  });
+
+  // Tabs
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.hasAttribute("data-admin-only") && !isAdminUser()) return;
+      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("is-active"));
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      document.getElementById(`tab-${btn.dataset.tab}`)?.classList.add("is-active");
+      if (mobileTopbarTitle) {
+        mobileTopbarTitle.textContent = btn.dataset.title || btn.textContent.trim();
+      }
+      if (btn.dataset.tab === "chat") showChatList();
+      setMenuOpen(false);
+    });
+  });
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginError.hidden = true;
+    try {
+      const data = await api("/api/admin/login", {
+        method: "POST",
+        body: JSON.stringify({
+          username: document.getElementById("login-username").value,
+          password: document.getElementById("login-password").value,
+        }),
+      });
+      token = data.token;
+      currentUser = data.user;
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+      await bootAdmin();
+    } catch (err) {
+      loginError.textContent = err.message;
+      loginError.hidden = false;
+    }
+  });
+
+  logoutBtn.addEventListener("click", async () => {
+    try {
+      if (token) await api("/api/admin/logout", { method: "POST", body: "{}" });
+    } catch {
+      /* ignore */
+    }
+    token = "";
+    currentUser = null;
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    ws?.close();
+    setMenuOpen(false);
+    showApp(false);
+  });
+
+  async function bootAdmin() {
+    showApp(true);
+    applyRoleAccess();
+    const signedIn = document.getElementById("signed-in");
+    if (signedIn) {
+      const label = currentUser?.name || currentUser?.username || "";
+      const roleLabel = userRole() === "support" ? "Support" : "Admin";
+      signedIn.textContent = label ? `${roleLabel}: ${label}` : "";
+    }
+
+    if (isAdminUser()) {
+      config = await api("/api/admin/config");
+      renderGames();
+      renderFacebook();
+      renderContact();
+      renderWinners();
+      await loadPayments();
+      await loadSpin();
+      await loadCustomers();
+      await loadUsers();
+    } else {
+      config = { winners: [], spinPrizes: [] };
+      const winnersData = await api("/api/admin/winners");
+      config.winners = winnersData.winners || [];
+      renderWinners();
+      await loadSpin();
+      await loadCustomers();
+    }
+
+    await refreshChats();
+    connectWs();
+  }
+
+  async function loadSpin() {
+    const data = await api("/api/admin/spin");
+    config.spinPrizes = data.prizes || [];
+    renderSpin();
+    await loadSpinClaims();
+  }
+
+  function renderSpin() {
+    const body = document.getElementById("spin-body");
+    if (!body) return;
+    const list = [...(config.spinPrizes || [])];
+    while (list.length < 13) {
+      list.push({ id: uid("sp_"), label: "", enabled: true });
+    }
+    body.innerHTML = list
+      .slice(0, 13)
+      .map(
+        (p, i) => `
+      <tr>
+        <td data-label="#">${i + 1}</td>
+        <td data-label="Prize"><input data-field="label" value="${esc(p.label || "")}" maxlength="24" placeholder="Prize label" /></td>
+        <td data-label="Enabled"><label class="toggle-label"><input type="checkbox" data-field="enabled" ${p.enabled !== false ? "checked" : ""} /> On</label></td>
+      </tr>`
+      )
+      .join("");
+  }
+
+  function fmtDate(ms) {
+    if (!ms) return "—";
+    try {
+      return new Date(ms).toLocaleString();
+    } catch {
+      return "—";
+    }
+  }
+
+  async function loadSpinClaims() {
+    const body = document.getElementById("spin-claims-body");
+    if (!body) return;
+    try {
+      const data = await api("/api/admin/spins");
+      const spins = data.spins || [];
+      if (!spins.length) {
+        body.innerHTML = `<tr class="table-empty"><td colspan="6">No claims yet</td></tr>`;
+        return;
+      }
+      body.innerHTML = spins
+        .slice(0, 50)
+        .map((s) => {
+          const spunAt = s.createdAt || s.claimedAt;
+          const nextAt = s.nextAvailableAt || (spunAt ? spunAt + 7 * 24 * 60 * 60 * 1000 : 0);
+          return `
+        <tr>
+          <td data-label="Prize">${esc(s.prizeLabel)}</td>
+          <td data-label="Name">${esc(s.name)}</td>
+          <td data-label="Phone">${esc(s.phone)}</td>
+          <td data-label="Email">${esc(s.email)}</td>
+          <td data-label="Spun">${esc(fmtDate(spunAt))}</td>
+          <td data-label="Next spin">${esc(fmtDate(nextAt))}</td>
+        </tr>`;
+        })
+        .join("");
+    } catch {
+      body.innerHTML = `<tr class="table-empty"><td colspan="6">Could not load claims</td></tr>`;
+    }
+  }
+
+  document.getElementById("spin-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const rows = [...document.querySelectorAll("#spin-body tr")];
+      const prizes = rows
+        .map((tr, i) => ({
+          id: (config.spinPrizes || [])[i]?.id || uid("sp_"),
+          label: tr.querySelector('[data-field="label"]').value.trim(),
+          enabled: tr.querySelector('[data-field="enabled"]').checked,
+        }))
+        .filter((p) => p.label);
+      const data = await api("/api/admin/spin", {
+        method: "PUT",
+        body: JSON.stringify({ prizes }),
+      });
+      config.spinPrizes = data.prizes;
+      renderSpin();
+      setStatus("spin-status", "Saved — live on /spin/");
+    } catch (err) {
+      setStatus("spin-status", err.message, true);
+    }
+  });
+
+  // Games
+  function renderGames() {
+    const body = document.getElementById("games-body");
+    body.innerHTML = (config.games || [])
+      .map(
+        (g, i) => `
+      <tr data-i="${i}">
+        <td data-label="Name"><input data-field="name" value="${esc(g.name)}" /></td>
+        <td data-label="Image"><input data-field="image" value="${esc(g.image)}" /></td>
+        <td data-label="Player URL"><input data-field="player" value="${esc(g.player)}" /></td>
+        <td data-label="Agent URL"><input data-field="agent" value="${esc(g.agent)}" /></td>
+        <td data-label="Actions"><button type="button" class="danger" data-del="${i}">Delete</button></td>
+      </tr>`
+      )
+      .join("");
+
+    body.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("change", () => {
+        const i = Number(input.closest("tr").dataset.i);
+        config.games[i][input.dataset.field] = input.value.trim();
+      });
+    });
+    body.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        config.games.splice(Number(btn.dataset.del), 1);
+        renderGames();
+      });
+    });
+  }
+
+  document.getElementById("add-game-btn").addEventListener("click", () => {
+    config.games.push({
+      id: uid("g"),
+      name: "New Game",
+      image: "",
+      player: "https://",
+      agent: "https://",
+    });
+    renderGames();
+  });
+
+  document.getElementById("save-games-btn").addEventListener("click", async () => {
+    try {
+      const rows = [...document.querySelectorAll("#games-body tr")];
+      config.games = rows.map((tr) => {
+        const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
+        const existing = config.games[Number(tr.dataset.i)] || {};
+        return {
+          id: existing.id || uid("g"),
+          name: get("name"),
+          image: get("image"),
+          player: get("player"),
+          agent: get("agent"),
+        };
+      });
+      await api("/api/admin/games", {
+        method: "PUT",
+        body: JSON.stringify({ games: config.games }),
+      });
+      setStatus("games-status", "Saved");
+    } catch (err) {
+      setStatus("games-status", err.message, true);
+    }
+  });
+
+  // Winners (Yesterday's top 3)
+  function renderWinners() {
+    const body = document.getElementById("winners-body");
+    if (!body) return;
+    const list = [...(config.winners || [])];
+    while (list.length < 3) {
+      list.push({ rank: list.length + 1, name: "", amount: "" });
+    }
+    body.innerHTML = list
+      .slice(0, 3)
+      .map(
+        (w, i) => `
+      <tr data-i="${i}">
+        <td data-label="Rank"><strong>#${i + 1}</strong></td>
+        <td data-label="Name"><input data-field="name" value="${esc(w.name || "")}" placeholder="Player name" required /></td>
+        <td data-label="Amount"><input data-field="amount" value="${esc(w.amount || "")}" placeholder="$100.00" required /></td>
+      </tr>`
+      )
+      .join("");
+  }
+
+  document.getElementById("winners-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const rows = [...document.querySelectorAll("#winners-body tr")];
+      const winners = rows.map((tr, i) => ({
+        rank: i + 1,
+        name: tr.querySelector('[data-field="name"]').value.trim(),
+        amount: tr.querySelector('[data-field="amount"]').value.trim(),
+      }));
+      const data = await api("/api/admin/winners", {
+        method: "PUT",
+        body: JSON.stringify({ winners }),
+      });
+      config.winners = data.winners;
+      renderWinners();
+      setStatus("winners-status", "Saved — live on the site");
+    } catch (err) {
+      setStatus("winners-status", err.message, true);
+    }
+  });
+
+  // Facebook
+  function renderFacebook() {
+    const list = document.getElementById("fb-list");
+    list.innerHTML = (config.facebook || [])
+      .map(
+        (f, i) => `
+      <div class="edit-card" data-i="${i}">
+        <label>Name<input data-field="name" value="${esc(f.name)}" /></label>
+        <label>URL<input data-field="url" value="${esc(f.url)}" /></label>
+        <label>Description<input data-field="desc" value="${esc(f.desc || "")}" /></label>
+        <button type="button" class="danger" data-del="${i}">Delete</button>
+      </div>`
+      )
+      .join("");
+
+    list.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        config.facebook.splice(Number(btn.dataset.del), 1);
+        renderFacebook();
+      });
+    });
+  }
+
+  document.getElementById("add-fb-btn").addEventListener("click", () => {
+    config.facebook.push({
+      id: uid("fb"),
+      name: "New Page",
+      url: "https://www.facebook.com/",
+      desc: "",
+    });
+    renderFacebook();
+  });
+
+  document.getElementById("save-fb-btn").addEventListener("click", async () => {
+    try {
+      const cards = [...document.querySelectorAll("#fb-list .edit-card")];
+      config.facebook = cards.map((card) => {
+        const get = (f) => card.querySelector(`[data-field="${f}"]`).value.trim();
+        const existing = config.facebook[Number(card.dataset.i)] || {};
+        return {
+          id: existing.id || uid("fb"),
+          name: get("name"),
+          url: get("url"),
+          desc: get("desc"),
+        };
+      });
+      await api("/api/admin/facebook", {
+        method: "PUT",
+        body: JSON.stringify({ facebook: config.facebook }),
+      });
+      setStatus("fb-status", "Saved");
+    } catch (err) {
+      setStatus("fb-status", err.message, true);
+    }
+  });
+
+  // Contact
+  function renderContact() {
+    const messengerInput = document.getElementById("messenger-input");
+    if (messengerInput) messengerInput.value = config.messenger || "";
+    document.getElementById("whatsapp-input").value = config.whatsapp || "";
+    document.getElementById("telegram-input").value = config.telegram || "";
+  }
+
+  document.getElementById("contact-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const data = await api("/api/admin/contact", {
+        method: "PUT",
+        body: JSON.stringify({
+          messenger: document.getElementById("messenger-input")?.value || "",
+          whatsapp: document.getElementById("whatsapp-input").value,
+          telegram: document.getElementById("telegram-input").value,
+        }),
+      });
+      config.messenger = data.messenger || "";
+      config.whatsapp = data.whatsapp;
+      config.telegram = data.telegram;
+      setStatus("contact-status", "Saved");
+    } catch (err) {
+      setStatus("contact-status", err.message, true);
+    }
+  });
+
+  // Payments
+  let payments = [];
+
+  async function loadPayments() {
+    const data = await api("/api/admin/payments");
+    payments = data.payments || [];
+    renderPayments();
+  }
+
+  function renderPayments() {
+    const body = document.getElementById("payments-body");
+    if (!body) return;
+
+    if (!payments.length) {
+      body.innerHTML = `<tr class="table-empty"><td colspan="3">No payment options yet. Add one above.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = payments
+      .map(
+        (p) => `
+      <tr data-id="${esc(p.id)}">
+        <td data-label="Name"><input data-field="name" value="${esc(p.name || "")}" /></td>
+        <td data-label="Status">
+          <label class="switch">
+            <input type="checkbox" data-field="enabled" ${p.enabled !== false ? "checked" : ""} />
+            <span>${p.enabled !== false ? "On" : "Off"}</span>
+          </label>
+        </td>
+        <td data-label="Actions" class="user-actions">
+          <button type="button" class="btn-mini" data-save-payment="${esc(p.id)}">Save</button>
+          <button type="button" class="btn-mini danger" data-del-payment="${esc(p.id)}">Delete</button>
+        </td>
+      </tr>`
+      )
+      .join("");
+
+    body.querySelectorAll('[data-field="enabled"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        const label = input.parentElement?.querySelector("span");
+        if (label) label.textContent = input.checked ? "On" : "Off";
+      });
+    });
+
+    body.querySelectorAll("[data-save-payment]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("tr");
+        try {
+          await api(`/api/admin/payments/${btn.dataset.savePayment}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: row.querySelector('[data-field="name"]').value,
+              enabled: row.querySelector('[data-field="enabled"]').checked,
+            }),
+          });
+          setStatus("payments-status", "Payment updated");
+          await loadPayments();
+        } catch (err) {
+          setStatus("payments-status", err.message, true);
+        }
+      });
+    });
+
+    body.querySelectorAll("[data-del-payment]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this payment option?")) return;
+        try {
+          await api(`/api/admin/payments/${btn.dataset.delPayment}`, { method: "DELETE" });
+          setStatus("payments-status", "Payment deleted");
+          await loadPayments();
+        } catch (err) {
+          setStatus("payments-status", err.message, true);
+        }
+      });
+    });
+  }
+
+  document.getElementById("add-payment-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/admin/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("new-payment-name").value,
+          enabled: document.getElementById("new-payment-enabled").checked,
+        }),
+      });
+      e.target.reset();
+      document.getElementById("new-payment-enabled").checked = true;
+      setStatus("payments-status", "Payment added");
+      await loadPayments();
+    } catch (err) {
+      setStatus("payments-status", err.message, true);
+    }
+  });
+
+  // Customers
+  let customers = [];
+
+  async function loadCustomers() {
+    const data = await api("/api/admin/customers");
+    customers = data.customers || [];
+    renderCustomers();
+  }
+
+  function renderCustomers() {
+    const body = document.getElementById("customers-body");
+    if (!body) return;
+
+    if (!customers.length) {
+      body.innerHTML = `<tr class="table-empty"><td colspan="5">No customers yet. They appear here when someone starts a support chat.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = customers
+      .map(
+        (c) => `
+      <tr data-id="${esc(c.id)}">
+        <td data-label="Name"><input data-field="name" value="${esc(c.name || "")}" /></td>
+        <td data-label="Phone"><input data-field="phone" value="${esc(c.phone || "")}" /></td>
+        <td data-label="Email"><input data-field="email" value="${esc(c.email || "")}" /></td>
+        <td data-label="Updated">${c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "—"}</td>
+        <td data-label="Actions" class="user-actions">
+          <button type="button" class="btn-mini" data-save-customer="${esc(c.id)}">Save</button>
+          <button type="button" class="btn-mini danger" data-del-customer="${esc(c.id)}">Delete</button>
+        </td>
+      </tr>`
+      )
+      .join("");
+
+    body.querySelectorAll("[data-save-customer]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("tr");
+        try {
+          await api(`/api/admin/customers/${btn.dataset.saveCustomer}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: row.querySelector('[data-field="name"]').value,
+              phone: row.querySelector('[data-field="phone"]').value,
+              email: row.querySelector('[data-field="email"]').value,
+            }),
+          });
+          setStatus("customers-status", "Customer updated");
+          await loadCustomers();
+        } catch (err) {
+          setStatus("customers-status", err.message, true);
+        }
+      });
+    });
+
+    body.querySelectorAll("[data-del-customer]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this customer?")) return;
+        try {
+          await api(`/api/admin/customers/${btn.dataset.delCustomer}`, { method: "DELETE" });
+          setStatus("customers-status", "Customer deleted");
+          await loadCustomers();
+        } catch (err) {
+          setStatus("customers-status", err.message, true);
+        }
+      });
+    });
+  }
+
+  document.getElementById("add-customer-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/admin/customers", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("new-customer-name").value,
+          phone: document.getElementById("new-customer-phone").value,
+          email: document.getElementById("new-customer-email").value,
+        }),
+      });
+      e.target.reset();
+      setStatus("customers-status", "Customer added");
+      await loadCustomers();
+    } catch (err) {
+      setStatus("customers-status", err.message, true);
+    }
+  });
+
+  // Users
+  async function loadUsers() {
+    const data = await api("/api/admin/users");
+    users = data.users || [];
+    renderUsers();
+  }
+
+  function renderUsers() {
+    const body = document.getElementById("users-body");
+    if (!body) return;
+    body.innerHTML = users
+      .map((u) => {
+        const role = String(u.role || "admin").toLowerCase() === "support" ? "support" : "admin";
+        return `
+      <tr data-id="${esc(u.id)}">
+        <td data-label="Name"><input data-field="name" value="${esc(u.name || "")}" /></td>
+        <td data-label="Username"><code>${esc(u.username)}</code></td>
+        <td data-label="Role">
+          <select data-field="role">
+            <option value="admin" ${role === "admin" ? "selected" : ""}>Admin</option>
+            <option value="support" ${role === "support" ? "selected" : ""}>Support</option>
+          </select>
+        </td>
+        <td data-label="Password"><input data-field="password" type="password" placeholder="Leave blank to keep" /></td>
+        <td data-label="Actions" class="user-actions">
+          <button type="button" class="btn-mini" data-save="${esc(u.id)}">Save</button>
+          <button type="button" class="btn-mini danger" data-del="${esc(u.id)}">Delete</button>
+        </td>
+      </tr>`;
+      })
+      .join("");
+
+    body.querySelectorAll("[data-save]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("tr");
+        const payload = {
+          name: row.querySelector('[data-field="name"]').value,
+          role: row.querySelector('[data-field="role"]').value,
+        };
+        const password = row.querySelector('[data-field="password"]').value.trim();
+        if (password) payload.password = password;
+        try {
+          await api(`/api/admin/users/${btn.dataset.save}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          });
+          setStatus("users-status", "User updated");
+          await loadUsers();
+        } catch (err) {
+          setStatus("users-status", err.message, true);
+        }
+      });
+    });
+
+    body.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this user?")) return;
+        try {
+          await api(`/api/admin/users/${btn.dataset.del}`, { method: "DELETE" });
+          setStatus("users-status", "User deleted");
+          await loadUsers();
+        } catch (err) {
+          setStatus("users-status", err.message, true);
+        }
+      });
+    });
+  }
+
+  document.getElementById("add-user-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("new-user-name").value,
+          username: document.getElementById("new-user-username").value,
+          password: document.getElementById("new-user-password").value,
+          role: document.getElementById("new-user-role").value,
+        }),
+      });
+      e.target.reset();
+      const roleSelect = document.getElementById("new-user-role");
+      if (roleSelect) roleSelect.value = "support";
+      setStatus("users-status", "User added");
+      await loadUsers();
+    } catch (err) {
+      setStatus("users-status", err.message, true);
+    }
+  });
+
+  // Chat
+  async function refreshChats() {
+    const data = await api("/api/admin/chats");
+    conversations = data.conversations || [];
+    renderConvoList();
+    const unread = conversations.reduce((n, c) => n + (c.unreadAdmin || 0), 0);
+    setUnreadBadges(unread);
+  }
+
+  function previewText(message) {
+    if (!message) return "No messages";
+    if (message.attachment?.kind === "image") return message.text && message.text !== "Photo" ? message.text : "Photo";
+    if (message.attachment?.kind === "video") return message.text && message.text !== "Video" ? message.text : "Video";
+    if (message.attachment) return message.attachment.name || message.text || "Document";
+    return message.text || "No messages";
+  }
+
+  function renderAttachmentHtml(attachment) {
+    if (!attachment?.url) return "";
+    const url = esc(attachment.url);
+    const name = esc(attachment.name || "Download file");
+    if (attachment.kind === "image") {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer"><img class="bubble-media" src="${url}" alt="${name}" loading="lazy" /></a>`;
+    }
+    if (attachment.kind === "video") {
+      return `<video class="bubble-media" src="${url}" controls preload="metadata"></video>`;
+    }
+    return `<a class="bubble-file" href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+  }
+
+  function initials(name) {
+    const parts = String(name || "V").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "V";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  function renderConvoList() {
+    if (!conversations.length) {
+      convoList.innerHTML = `<p class="convo-empty">No Messenger chats yet. When someone messages your Facebook Page, it shows up here.</p>`;
+      return;
+    }
+    convoList.innerHTML = conversations
+      .map((c) => {
+        const last = previewText(c.lastMessage);
+        const when = c.updatedAt
+          ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+          : "";
+        const unread = c.unreadAdmin ? `<span class="convo-unread">${c.unreadAdmin}</span>` : "";
+        const channel =
+          c.channel === "facebook"
+            ? `<span class="convo-channel" title="Facebook Messenger">FB</span>`
+            : "";
+        return `
+          <button type="button" class="convo-item ${c.id === activeId ? "is-active" : ""}" data-id="${esc(c.id)}">
+            <span class="convo-avatar" aria-hidden="true">${esc(initials(c.name))}</span>
+            <span class="convo-copy">
+              <span class="convo-top">
+                <strong>${esc(c.name || "Visitor")}${channel}</strong>
+                <span class="convo-time">${esc(when)}</span>
+              </span>
+              <span class="convo-bottom">
+                <span class="preview">${esc(last)}</span>
+                ${c.online ? '<span class="dot-online" title="Online"></span>' : ""}
+                ${unread}
+              </span>
+            </span>
+          </button>`;
+      })
+      .join("");
+
+    convoList.querySelectorAll(".convo-item").forEach((btn) => {
+      btn.addEventListener("click", () => openConvo(btn.dataset.id));
+    });
+  }
+
+  async function openConvo(id) {
+    activeId = id;
+    const convo = await api(`/api/admin/chats/${id}`);
+    activeMessages = convo.messages || [];
+    if (threadName) threadName.textContent = convo.name || "Visitor";
+    if (threadContact) {
+      const lines = [];
+      if (convo.channel === "facebook") lines.push("Facebook Messenger");
+      if (convo.phone) lines.push(convo.phone);
+      if (convo.email) lines.push(convo.email);
+      threadContact.innerHTML = lines.map((l) => `<div>${esc(l)}</div>`).join("");
+      threadContact.hidden = lines.length === 0;
+    }
+    threadForm.hidden = false;
+    showChatThread();
+    renderThread();
+    await refreshChats();
+  }
+
+  function renderThread() {
+    threadBody.innerHTML = activeMessages
+      .map((m) => {
+        const attachmentHtml = renderAttachmentHtml(m.attachment);
+        const caption = String(m.text || "").trim();
+        const isAuto =
+          !caption ||
+          caption === "Photo" ||
+          caption === "Video" ||
+          /^File:\s/i.test(caption);
+        const textHtml =
+          caption && !(m.attachment && isAuto) ? `<div>${esc(caption)}</div>` : !m.attachment ? esc(caption) : "";
+        return `<div class="bubble ${esc(m.from)}">${attachmentHtml}${textHtml}</div>`;
+      })
+      .join("");
+    threadBody.scrollTop = threadBody.scrollHeight;
+  }
+
+  function clearThreadFile() {
+    if (threadFile) threadFile.value = "";
+    if (threadFileName) {
+      threadFileName.hidden = true;
+      threadFileName.textContent = "";
+    }
+    if (threadFileClear) threadFileClear.hidden = true;
+  }
+
+  async function uploadThreadFile(file) {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/chat/upload", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+    return data.attachment;
+  }
+
+  threadFile?.addEventListener("change", () => {
+    const file = threadFile.files?.[0];
+    if (!file) {
+      clearThreadFile();
+      return;
+    }
+    if (threadFileName) {
+      threadFileName.hidden = false;
+      threadFileName.textContent = file.name;
+    }
+    if (threadFileClear) threadFileClear.hidden = false;
+  });
+
+  threadFileClear?.addEventListener("click", () => clearThreadFile());
+
+  threadForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = threadInput.value.trim();
+    const file = threadFile?.files?.[0] || null;
+    if ((!text && !file) || !activeId || !ws || ws.readyState !== 1) return;
+
+    const sendBtn = threadForm.querySelector('button[type="submit"]');
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      let attachment = null;
+      if (file) attachment = await uploadThreadFile(file);
+      const payload = { type: "message", conversationId: activeId, text: text || "" };
+      if (attachment) payload.attachment = attachment;
+      ws.send(JSON.stringify(payload));
+      threadInput.value = "";
+      clearThreadFile();
+    } catch (err) {
+      alert(err.message || "Could not send");
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
+    }
+  });
+
+  function connectWs() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "join_admin", token }));
+    });
+    ws.addEventListener("message", async (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "error") {
+        alert(msg.error || "Chat error");
+        return;
+      }
+      if (msg.type === "message") {
+        if (msg.conversationId === activeId) {
+          activeMessages.push(msg.message);
+          renderThread();
+        }
+        await refreshChats();
+      }
+      if (msg.type === "presence" || msg.type === "chat_deleted") {
+        await refreshChats();
+      }
+    });
+    ws.addEventListener("close", () => {
+      setTimeout(() => {
+        if (token) connectWs();
+      }, 2000);
+    });
+  }
+
+  function esc(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  applySupportPortalLogin();
+
+  // Auto login if token exists
+  if (token) {
+    bootAdmin().catch(() => {
+      token = "";
+      currentUser = null;
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      showApp(false);
+    });
+  }
+})();

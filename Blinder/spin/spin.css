@@ -1,0 +1,422 @@
+.spin-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+#confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+
+.spin-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: calc(var(--header-h) + 1.25rem) 1.1rem 3rem;
+  text-align: center;
+}
+
+.spin-main h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.6rem, 8vw, 4rem);
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.spin-lead {
+  margin: 0.85rem auto 0;
+  max-width: 28rem;
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+}
+
+.spin-stage {
+  margin-top: 1.5rem;
+  display: grid;
+  justify-items: center;
+  gap: 1.1rem;
+}
+
+.spin-phone-field {
+  display: grid;
+  gap: 0.4rem;
+  width: min(100%, 280px);
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.spin-phone-field input {
+  width: 100%;
+  min-height: 2.85rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.spin-phone-field input:focus {
+  outline: none;
+  border-color: #ffd27a;
+  box-shadow: 0 0 0 3px rgba(255, 210, 122, 0.18);
+}
+
+.spin-phone-field input:disabled {
+  opacity: 0.7;
+}
+
+.spin-phone-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.spin-phone-error[hidden] {
+  display: none !important;
+}
+
+.wheel-rig {
+  position: relative;
+  width: min(92vw, 460px);
+  padding-top: 1.4rem;
+}
+
+.spin-pointer {
+  position: absolute;
+  left: 50%;
+  top: 0.15rem;
+  z-index: 5;
+  transform: translateX(-50%);
+  transform-origin: 50% 8px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+  transition: transform 0.06s linear;
+}
+
+.spin-pointer.is-tick {
+  transform: translateX(-50%) rotate(-14deg);
+}
+
+.pointer-tip {
+  display: block;
+  width: 0;
+  height: 0;
+  margin: 0 auto;
+  border-left: 16px solid transparent;
+  border-right: 16px solid transparent;
+  border-top: 34px solid #ffd27a;
+}
+
+.pointer-base {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: -10px auto 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff3c8, #d4a017 55%, #8a6508);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.wheel-lights {
+  position: absolute;
+  inset: 1.55rem 0.15rem 0.15rem;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      #ffd27a 0deg 8deg,
+      transparent 8deg 36deg
+    );
+  mask: radial-gradient(circle, transparent 67%, #000 68%, #000 71%, transparent 72%);
+  opacity: 0.85;
+  animation: lights 1.2s linear infinite;
+  z-index: 1;
+}
+
+.wheel-lights.is-fast {
+  animation-duration: 0.35s;
+}
+
+@keyframes lights {
+  to {
+    transform: rotate(36deg);
+  }
+}
+
+.wheel-wrap {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  padding: 0.7rem;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.22), transparent 35%),
+    linear-gradient(145deg, #f0d078, #b8860b 40%, #6d4e0b 70%, #f0d078);
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.55),
+    inset 0 2px 4px rgba(255, 255, 255, 0.35),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.wheel-wrap.is-spinning {
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(255, 210, 122, 0.25),
+    inset 0 2px 4px rgba(255, 255, 255, 0.35);
+}
+
+#wheel {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+}
+
+.hub-btn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  width: 5.4rem;
+  height: 5.4rem;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #1a1205;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  background:
+    radial-gradient(circle at 35% 30%, #fff4cf, #ffd27a 40%, #c9961a 70%, #8a6508);
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.4),
+    inset 0 2px 3px rgba(255, 255, 255, 0.55),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.hub-btn:hover:not(:disabled) {
+  transform: translate(-50%, -50%) scale(1.05);
+  filter: brightness(1.05);
+}
+
+.hub-btn:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.7);
+}
+
+.hub-btn span {
+  display: block;
+  transform: translateY(1px);
+}
+
+.spin-status {
+  margin: 0;
+  min-height: 1.4em;
+  color: #ffd27a;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.spin-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.claim-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 10, 12, 0.78);
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.25s ease;
+}
+
+.claim-modal[hidden] {
+  display: none !important;
+}
+
+.claim-card {
+  width: min(100%, 400px);
+  padding: 1.5rem 1.4rem 1.55rem;
+  border: 1px solid rgba(255, 210, 122, 0.35);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 210, 122, 0.2), transparent 45%),
+    linear-gradient(165deg, rgba(43, 184, 174, 0.14), rgba(27, 30, 34, 0.97));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  text-align: center;
+  animation: popIn 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.claim-card h2 {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2rem, 6vw, 2.6rem);
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #ffd27a;
+}
+
+.claim-copy {
+  margin: 0.55rem 0 1.1rem;
+  color: var(--ink-soft);
+}
+
+.claim-card form {
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.claim-card label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.claim-card input {
+  width: 100%;
+  min-height: 2.7rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.claim-card input:focus {
+  outline: none;
+  border-color: #ffd27a;
+}
+
+.claim-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.claim-error[hidden] {
+  display: none !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .spin-main {
+    padding: calc(var(--header-h) + 0.85rem) 0.85rem calc(2.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .spin-main h1 {
+    font-size: clamp(2.1rem, 11vw, 3rem);
+  }
+
+  .spin-lead {
+    font-size: 0.98rem;
+    margin-top: 0.65rem;
+  }
+
+  .wheel-rig {
+    width: min(94vw, 420px);
+  }
+
+  .hub-btn {
+    width: 4.7rem;
+    height: 4.7rem;
+    font-size: 0.95rem;
+  }
+
+  .spin-cta {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.55rem;
+  }
+
+  .spin-cta .btn {
+    width: 100%;
+    min-height: 2.85rem;
+  }
+
+  .claim-modal {
+    padding: 0.65rem;
+    padding-top: calc(0.65rem + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom, 0px));
+    align-items: end;
+  }
+
+  .claim-card {
+    width: 100%;
+    max-height: min(92dvh, 720px);
+    overflow: auto;
+    padding: 1.25rem 1.1rem 1.35rem;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .claim-card input {
+    font-size: 16px;
+    min-height: 2.85rem;
+  }
+
+  .claim-card .btn {
+    min-height: 2.85rem;
+    width: 100%;
+  }
+
+  .spin-status {
+    font-size: 0.95rem;
+    padding: 0 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wheel-lights {
+    animation: none;
+  }
+}

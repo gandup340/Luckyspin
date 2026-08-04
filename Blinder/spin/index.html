@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LUCKY VIPS GAME — Spin & Win</title>
+    <meta name="theme-color" content="#141618" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="spin.css" />
+  </head>
+  <body class="spin-page">
+    <div class="page-bg" aria-hidden="true"></div>
+    <canvas id="confetti" aria-hidden="true"></canvas>
+
+    <header class="header is-scrolled" id="site-header">
+      <a class="brand" href="/">LUCKY VIPS GAME</a>
+      <a class="btn btn-fill header-enter" href="/#games">Games</a>
+    </header>
+
+    <main class="spin-main">
+      <p class="eyebrow">Lucky wheel</p>
+      <h1>Spin & win</h1>
+      <p class="spin-lead">Spin free anytime. Claim a prize with your phone — one prize per phone or device each week.</p>
+
+      <div class="spin-stage">
+        <div class="wheel-rig">
+          <div class="spin-pointer" id="spin-pointer" aria-hidden="true">
+            <span class="pointer-tip"></span>
+            <span class="pointer-base"></span>
+          </div>
+          <div class="wheel-lights" aria-hidden="true"></div>
+          <div class="wheel-wrap" id="wheel-wrap">
+            <canvas id="wheel" width="520" height="520" aria-label="Prize wheel"></canvas>
+            <button type="button" class="hub-btn" id="spin-btn" aria-label="Spin the wheel">
+              <span>SPIN</span>
+            </button>
+          </div>
+        </div>
+        <p class="spin-status" id="spin-status" aria-live="polite">Tap SPIN to play</p>
+      </div>
+
+      <div class="spin-cta">
+        <a class="btn btn-fill" href="/#games">Open game links</a>
+        <a class="btn btn-line" href="/?openChat=1">Talk to support</a>
+      </div>
+    </main>
+
+    <div class="claim-modal" id="claim-modal" hidden>
+      <div class="claim-card" role="dialog" aria-modal="true" aria-labelledby="claim-title">
+        <p class="eyebrow">You won</p>
+        <h2 id="claim-title">Prize</h2>
+        <p class="claim-copy" id="claim-copy">Enter your details to claim this prize.</p>
+        <form id="claim-form">
+          <label>
+            Name
+            <input type="text" id="claim-name" autocomplete="name" maxlength="60" required />
+          </label>
+          <label>
+            Phone
+            <input type="tel" id="claim-phone" autocomplete="tel" maxlength="30" required />
+          </label>
+          <label>
+            Email
+            <input type="email" id="claim-email" autocomplete="email" maxlength="120" required />
+          </label>
+          <button type="submit" class="btn btn-fill btn-block">Claim prize</button>
+          <p class="claim-error" id="claim-error" hidden></p>
+        </form>
+      </div>
+    </div>
+
+    <script src="spin.js"></script>
+  </body>
+</html>
