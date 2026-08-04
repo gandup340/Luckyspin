@@ -698,16 +698,27 @@ app.get("/api/facebook/webhook", (req, res) => {
 
 app.post("/api/facebook/webhook", async (req, res) => {
   res.sendStatus(200);
-  if (!FACEBOOK_ENABLED) return;
-  if (!verifyFacebookSignature(req)) return;
+  if (!FACEBOOK_ENABLED) {
+    console.warn(
+      "Facebook webhook event ignored: set FACEBOOK_PAGE_ACCESS_TOKEN on this host (Render Environment)"
+    );
+    return;
+  }
+  if (!verifyFacebookSignature(req)) {
+    console.warn("Facebook webhook event ignored: bad X-Hub-Signature-256 (check FACEBOOK_APP_SECRET)");
+    return;
+  }
   try {
     const body = req.body || {};
     if (body.object !== "page") return;
+    let count = 0;
     for (const entry of body.entry || []) {
       for (const event of entry.messaging || []) {
         await ingestFacebookMessagingEvent(event);
+        count += 1;
       }
     }
+    if (count) console.log(`Facebook webhook: ingested ${count} messaging event(s)`);
   } catch (err) {
     console.error("Facebook webhook error:", err?.message || err);
   }
@@ -1056,6 +1067,7 @@ app.get("/api/admin/config", auth, requireAdmin, (_req, res) => {
     ...pub,
     games: cfg.games || [],
     paymentsAdmin: cfg.payments || [],
+    facebookMessengerConfigured: FACEBOOK_ENABLED,
   });
 });
 

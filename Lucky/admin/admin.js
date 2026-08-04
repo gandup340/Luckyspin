@@ -428,6 +428,19 @@
 
   // Facebook
   function renderFacebook() {
+    const messengerStatus = document.getElementById("fb-messenger-status");
+    if (messengerStatus) {
+      if (config.facebookMessengerConfigured) {
+        messengerStatus.textContent =
+          "Messenger inbox: connected. Page messages appear in Chats (FB badge).";
+        messengerStatus.classList.remove("is-error");
+      } else {
+        messengerStatus.textContent =
+          "Messenger inbox: NOT connected. Set FACEBOOK_PAGE_ACCESS_TOKEN in Render Environment, then restart.";
+        messengerStatus.classList.add("is-error");
+      }
+    }
+
     const list = document.getElementById("fb-list");
     list.innerHTML = (config.facebook || [])
       .map(
