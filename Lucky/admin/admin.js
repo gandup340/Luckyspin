@@ -433,11 +433,11 @@
       if (config.facebookMessengerConfigured) {
         messengerStatus.textContent =
           "Messenger inbox: connected. Page messages appear in Chats (FB badge).";
-        messengerStatus.classList.remove("is-error");
+        messengerStatus.classList.remove("error");
       } else {
         messengerStatus.textContent =
           "Messenger inbox: NOT connected. Set FACEBOOK_PAGE_ACCESS_TOKEN in Render Environment, then restart.";
-        messengerStatus.classList.add("is-error");
+        messengerStatus.classList.add("error");
       }
     }
 
