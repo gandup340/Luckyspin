@@ -36,6 +36,18 @@ const FACEBOOK_VERIFY_TOKEN = String(
 const FACEBOOK_APP_SECRET = String(process.env.FACEBOOK_APP_SECRET || "").trim();
 const FACEBOOK_GRAPH_VERSION = String(process.env.FACEBOOK_GRAPH_VERSION || "v21.0").trim();
 const FACEBOOK_ENABLED = Boolean(FACEBOOK_PAGE_ACCESS_TOKEN && FACEBOOK_VERIFY_TOKEN);
+const FACEBOOK_SUBSCRIBED_FIELDS = [
+  "messages",
+  "messaging_postbacks",
+  "message_deliveries",
+  "message_reads",
+];
+let facebookRuntime = {
+  lastWebhookAt: 0,
+  lastIngestAt: 0,
+  lastIngestText: "",
+  pageSubscribe: null,
+};
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -522,6 +534,64 @@ async function sendFacebookMessage(psid, text) {
   return data;
 }
 
+async function fetchFacebookPageIdentity() {
+  if (!FACEBOOK_PAGE_ACCESS_TOKEN) return null;
+  try {
+    const url = facebookGraphUrl("/me", {
+      fields: "id,name",
+      access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+    });
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data?.error?.message || `Graph /me failed (${res.status})`,
+      };
+    }
+    return {
+      ok: true,
+      id: String(data.id || ""),
+      name: String(data.name || ""),
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message || "Graph /me failed" };
+  }
+}
+
+async function subscribeFacebookPage() {
+  if (!FACEBOOK_PAGE_ACCESS_TOKEN) {
+    facebookRuntime.pageSubscribe = { ok: false, error: "FACEBOOK_PAGE_ACCESS_TOKEN missing" };
+    return facebookRuntime.pageSubscribe;
+  }
+  try {
+    const url = facebookGraphUrl("/me/subscribed_apps", {
+      access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+      subscribed_fields: FACEBOOK_SUBSCRIBED_FIELDS.join(","),
+    });
+    const res = await fetch(url, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      facebookRuntime.pageSubscribe = {
+        ok: false,
+        error: data?.error?.message || `subscribed_apps failed (${res.status})`,
+      };
+    } else {
+      facebookRuntime.pageSubscribe = {
+        ok: true,
+        fields: FACEBOOK_SUBSCRIBED_FIELDS,
+        at: Date.now(),
+      };
+    }
+  } catch (err) {
+    facebookRuntime.pageSubscribe = {
+      ok: false,
+      error: err?.message || "subscribed_apps failed",
+    };
+  }
+  return facebookRuntime.pageSubscribe;
+}
+
 function extractFacebookMessageText(message) {
   if (!message || typeof message !== "object") return "";
   if (message.text) return String(message.text).trim().slice(0, 2000);
@@ -600,6 +670,8 @@ async function ingestFacebookMessagingEvent(event) {
   convo.updatedAt = Date.now();
   convo.unreadAdmin = (convo.unreadAdmin || 0) + 1;
   saveChats(data);
+  facebookRuntime.lastIngestAt = Date.now();
+  facebookRuntime.lastIngestText = text.slice(0, 80);
 
   broadcast(
     {
@@ -698,6 +770,7 @@ app.get("/api/facebook/webhook", (req, res) => {
 
 app.post("/api/facebook/webhook", async (req, res) => {
   res.sendStatus(200);
+  facebookRuntime.lastWebhookAt = Date.now();
   if (!FACEBOOK_ENABLED) {
     console.warn(
       "Facebook webhook event ignored: set FACEBOOK_PAGE_ACCESS_TOKEN on this host (Render Environment)"
@@ -722,6 +795,20 @@ app.post("/api/facebook/webhook", async (req, res) => {
   } catch (err) {
     console.error("Facebook webhook error:", err?.message || err);
   }
+});
+
+app.get("/api/facebook/status", async (_req, res) => {
+  const page = FACEBOOK_ENABLED ? await fetchFacebookPageIdentity() : null;
+  res.json({
+    configured: FACEBOOK_ENABLED,
+    pageTokenSet: Boolean(FACEBOOK_PAGE_ACCESS_TOKEN),
+    verifyTokenSet: Boolean(FACEBOOK_VERIFY_TOKEN),
+    page,
+    pageSubscribe: facebookRuntime.pageSubscribe,
+    lastWebhookAt: facebookRuntime.lastWebhookAt || null,
+    lastIngestAt: facebookRuntime.lastIngestAt || null,
+    lastIngestText: facebookRuntime.lastIngestText || "",
+  });
 });
 
 app.use("/api/", apiLimiter);
@@ -1663,5 +1750,13 @@ server.listen(PORT, HOST, () => {
     console.log(`Mode:             development (set NODE_ENV=production for live hosting)`);
   } else {
     console.log(`Mode:             production`);
+  }
+  if (FACEBOOK_ENABLED) {
+    subscribeFacebookPage()
+      .then((result) => {
+        if (result?.ok) console.log("Facebook page subscribed for Messenger webhooks");
+        else console.warn("Facebook page subscribe failed:", result?.error || "unknown error");
+      })
+      .catch((err) => console.warn("Facebook page subscribe failed:", err?.message || err));
   }
 });
