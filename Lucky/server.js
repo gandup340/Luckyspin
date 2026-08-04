@@ -29,7 +29,10 @@ const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
   .map((s) => s.trim())
   .filter(Boolean);
 const FACEBOOK_PAGE_ACCESS_TOKEN = String(process.env.FACEBOOK_PAGE_ACCESS_TOKEN || "").trim();
-const FACEBOOK_VERIFY_TOKEN = String(process.env.FACEBOOK_VERIFY_TOKEN || "").trim();
+// Default allows Meta "Verify and save" even if Render env is missing this key.
+const FACEBOOK_VERIFY_TOKEN = String(
+  process.env.FACEBOOK_VERIFY_TOKEN || "luckyvipspins2026"
+).trim();
 const FACEBOOK_APP_SECRET = String(process.env.FACEBOOK_APP_SECRET || "").trim();
 const FACEBOOK_GRAPH_VERSION = String(process.env.FACEBOOK_GRAPH_VERSION || "v21.0").trim();
 const FACEBOOK_ENABLED = Boolean(FACEBOOK_PAGE_ACCESS_TOKEN && FACEBOOK_VERIFY_TOKEN);
