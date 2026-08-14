@@ -1,6 +1,6 @@
 {
   "name": "lucky-vips-game",
-  "version": "1.0.0",
+  "version": "1.0.0.8",
   "private": true,
   "description": "LUCKY VIPS GAME casino portal with admin panel, support chat, and Facebook Messenger",
   "main": "server.js",
@@ -19,6 +19,7 @@
     "express-rate-limit": "^8.6.0",
     "helmet": "^8.3.0",
     "multer": "^2.2.0",
+    "nodemailer": "^6.10.1",
     "pg": "^8.23.0",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"

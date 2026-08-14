@@ -101,20 +101,25 @@
               <div class="thread-body" id="thread-body"></div>
               <form class="thread-form" id="thread-form" hidden>
                 <div class="thread-attach-row">
-                  <label class="chat-attach-btn" title="Attach photo, video, or document">
+                  <label class="chat-attach-btn" title="Attach photo, video, audio, or document">
                     <input
                       type="file"
                       id="thread-file"
-                      accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
                       hidden
                     />
                     Attach
                   </label>
+                  <button type="button" class="chat-attach-btn" id="thread-voice-btn">Voice</button>
+                  <button type="button" class="chat-attach-btn" id="thread-call-btn">Call</button>
+                  <button type="button" class="chat-attach-btn chat-hang-btn" id="thread-hang-btn" hidden>End call</button>
                   <span class="chat-file-name" id="thread-file-name" hidden></span>
                   <button type="button" class="chat-file-clear" id="thread-file-clear" hidden aria-label="Remove attachment">
                     ×
                   </button>
                 </div>
+                <audio id="thread-local-audio" autoplay playsinline hidden></audio>
+                <audio id="thread-remote-audio" autoplay playsinline></audio>
                 <div class="thread-compose">
                   <input type="text" id="thread-input" placeholder="Reply to customer…" autocomplete="off" />
                   <button type="submit" class="btn btn-gold">Send</button>
@@ -507,6 +512,7 @@
       </main>
     </div>
 
+    <script src="/chat-media.js"></script>
     <script src="admin.js"></script>
   </body>
 </html>

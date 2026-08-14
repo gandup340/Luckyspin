@@ -24,7 +24,7 @@
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="is-welcome">
     <div class="page-bg" aria-hidden="true"></div>
     <a class="skip-link" href="#games">Skip to game links</a>
 
@@ -127,203 +127,155 @@
           </form>
         </div>
       </div>
+
+      <button type="button" class="welcome-install" id="welcome-install-btn" hidden>
+        Install App
+      </button>
+      <p class="welcome-install-hint" id="welcome-install-hint" hidden></p>
     </section>
 
-    <div id="site-shell" class="site-shell" hidden>
-    <header class="header" id="site-header">
-      <a class="brand" href="#games" aria-label="LUCKY VIPS GAME home">
-        <img class="brand-mark" src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
-        LUCKY VIPS GAME
-      </a>
-      <nav class="header-nav" aria-label="Sections">
-        <a href="#games">Games</a>
-        <a href="/spin/">Spin</a>
-        <a href="#facebook">Facebook</a>
-        <a href="#payments">Pay</a>
-        <button type="button" class="nav-text-btn" id="open-support-btn">Chat</button>
+    <div id="player-shell" class="player-shell" hidden>
+      <header class="player-bar">
+        <button type="button" class="player-burger" id="player-burger" aria-label="Open menu" aria-expanded="false" aria-controls="player-drawer">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="player-bar-brand">
+          <img src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
+          <strong id="player-bar-title">Chat</strong>
+        </div>
+        <span class="player-bar-user" id="player-bar-user"></span>
+      </header>
+
+      <div class="player-drawer-backdrop" id="player-drawer-backdrop" hidden></div>
+      <nav class="player-drawer" id="player-drawer" hidden aria-label="Player menu">
+        <p class="player-drawer-label">Menu</p>
+        <button type="button" class="player-nav-btn is-active" data-player-view="chat">Chat</button>
+        <button type="button" class="player-nav-btn" data-player-view="games">Games</button>
+        <button type="button" class="player-nav-btn" data-player-view="settings">Settings</button>
+        <button type="button" class="player-logout" id="player-logout">Log out</button>
       </nav>
-      <a class="btn btn-fill header-enter" href="#games">Enter</a>
-    </header>
 
-    <main id="top">
-      <section class="hero" aria-label="LUCKY VIPS GAME featured">
-        <div class="hero-stage" aria-hidden="true">
-          <div class="hero-photo"></div>
-          <div class="hero-gridlines"></div>
-          <div class="hero-glow"></div>
-        </div>
-        <div class="hero-copy">
-          <h1>LUCKY VIPS GAME</h1>
-          <p class="hero-sub">Official player doors — verified links only.</p>
-          <div class="hero-cta">
-            <a class="btn btn-fill" href="#games">Open game links</a>
-            <a class="btn btn-fill" href="/app/">Player login</a>
-            <button type="button" class="btn btn-line" id="hero-install-btn" hidden>Install App</button>
-            <button type="button" class="btn btn-line" id="hero-support-btn">Chat</button>
-            <a class="btn btn-line" href="/spin/">Spin & win</a>
+      <main class="player-main">
+        <section class="player-view is-active" id="player-view-chat" data-player-view="chat">
+          <div class="chat player-chat" id="chat">
+            <div class="chat-panel player-chat-panel" id="chat-panel">
+              <div class="chat-head">
+                <div class="chat-head-brand">
+                  <img src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
+                  <div>
+                    <strong>Live chat</strong>
+                    <small id="chat-status">Connecting…</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="chat-quick" id="chat-quick" hidden>
+                <button type="button" data-quick="I need help with a deposit">Deposit</button>
+                <button type="button" data-quick="I need help with a withdrawal">Withdraw</button>
+                <button type="button" data-quick="I need help with game links">Games</button>
+                <button type="button" data-quick="I have a question about my account">Account</button>
+              </div>
+
+              <form class="chat-intake" id="chat-intake" hidden autocomplete="on">
+                <p class="chat-intake-title">Start chat</p>
+                <label>
+                  Name
+                  <input id="chat-name" name="name" type="text" required maxlength="60" autocomplete="name" placeholder="Your name" />
+                </label>
+                <label>
+                  Phone
+                  <input id="chat-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
+                </label>
+                <label>
+                  Email
+                  <input id="chat-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email address" />
+                </label>
+                <p class="chat-intake-error" id="chat-intake-error" hidden></p>
+                <button type="submit" class="btn btn-fill" id="chat-start-btn">Start chatting</button>
+              </form>
+
+              <div class="chat-body" id="chat-body" hidden></div>
+
+              <form class="chat-form" id="chat-form" hidden>
+                <div class="chat-attach-row">
+                  <label class="chat-attach-btn" for="chat-file">Attach</label>
+                  <input type="file" id="chat-file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" />
+                  <button type="button" class="chat-attach-btn" id="chat-voice-btn">Voice</button>
+                  <button type="button" class="chat-attach-btn" id="chat-call-btn">Call</button>
+                  <button type="button" class="chat-attach-btn chat-hang-btn" id="chat-hang-btn" hidden>End call</button>
+                  <span class="chat-file-name" id="chat-file-name" hidden></span>
+                  <button type="button" class="chat-file-clear" id="chat-file-clear" hidden aria-label="Remove file">&times;</button>
+                </div>
+                <audio id="chat-local-audio" autoplay playsinline hidden></audio>
+                <audio id="chat-remote-audio" autoplay playsinline></audio>
+                <div class="chat-compose">
+                  <input id="chat-input" type="text" maxlength="2000" placeholder="Type a message…" autocomplete="off" />
+                  <button type="submit" class="btn btn-fill">Send</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="winners" aria-label="Yesterday's top winners">
-        <div class="winners-head">
-          <p class="eyebrow">Ledger</p>
-          <h2>Yesterday’s top 3</h2>
-        </div>
-        <ol class="winners-list" id="winners-list"></ol>
-      </section>
-
-      <section class="games" id="games">
-        <div class="games-layout">
-          <aside class="games-rail">
-            <p class="eyebrow">Directory</p>
+        <section class="player-view" id="player-view-games" data-player-view="games" hidden>
+          <div class="player-games-head">
             <h2>Game links</h2>
-
-            <p class="rail-copy">Search a game and open the player link.</p>
-
+            <p>Player doors only — verified LUCKY VIPS GAME links.</p>
             <label class="search">
               <span class="visually-hidden">Search games</span>
               <input type="search" id="game-search" placeholder="Find a game" autocomplete="off" enterkeyhint="search" />
               <button type="button" class="search-clear" id="search-clear" hidden aria-label="Clear search">Clear</button>
             </label>
-
-            <div class="controls-meta">
-              <p class="mode-hint" id="mode-hint">Showing <strong>player</strong> links</p>
-              <p class="game-count" id="game-count" aria-live="polite"></p>
-            </div>
-          </aside>
-
-          <div class="games-main">
-            <div class="game-grid is-loading" id="game-grid" aria-live="polite" aria-busy="true">
-              <div class="skel"></div>
-              <div class="skel"></div>
-              <div class="skel"></div>
-            </div>
-            <p class="empty-state" id="empty-state" hidden>No games match that search.</p>
+            <p class="game-count" id="game-count" aria-live="polite"></p>
+            <p class="mode-hint" id="mode-hint" hidden>Showing <strong>player</strong> links</p>
           </div>
-        </div>
-      </section>
+          <div class="game-grid is-loading" id="game-grid" aria-live="polite" aria-busy="true">
+            <div class="skel"></div>
+            <div class="skel"></div>
+            <div class="skel"></div>
+          </div>
+          <p class="empty-state" id="empty-state" hidden>No games match that search.</p>
+        </section>
 
-      <section class="facebook" id="facebook">
-        <div class="fb-block">
-          <header class="fb-block-head">
-            <p class="eyebrow">Verified</p>
-            <h2>Official Facebook</h2>
-            <p>Only these pages are LUCKY VIPS GAME.</p>
-          </header>
-          <ul class="fb-grid" id="fb-grid"></ul>
-        </div>
-      </section>
+        <section class="player-view" id="player-view-settings" data-player-view="settings" hidden>
+          <div class="player-settings">
+            <h2>Settings</h2>
+            <p class="player-settings-lead">Update your contact details or password.</p>
 
-      <section class="payments" id="payments" aria-label="Payment methods">
-        <p class="eyebrow">Cashier</p>
-        <h2>We accept</h2>
-        <ul class="pay-list" id="pay-list"></ul>
-      </section>
-    </main>
+            <form id="player-profile-form" class="player-card" autocomplete="on">
+              <h3>Profile</h3>
+              <label>Name <input id="set-name" name="name" type="text" maxlength="80" autocomplete="name" /></label>
+              <label>Email <input id="set-email" name="email" type="email" maxlength="120" autocomplete="email" /></label>
+              <label>Phone <input id="set-phone" name="phone" type="tel" maxlength="30" autocomplete="tel" /></label>
+              <p class="chat-intake-error" id="set-profile-error" hidden></p>
+              <p class="player-settings-ok" id="set-profile-ok" hidden></p>
+              <button type="submit" class="btn btn-fill">Save profile</button>
+            </form>
 
-    <section class="pwa-panel" id="pwa-panel" hidden aria-label="Install app and notifications">
-      <div class="pwa-panel-inner">
-        <div class="pwa-copy">
-          <p class="eyebrow">Phone app</p>
-          <h2>Install & alerts</h2>
-          <p class="pwa-lead">Add LUCKY VIPS GAME to your home screen and get updates on your phone.</p>
-        </div>
-        <div class="pwa-actions">
-          <button type="button" class="btn btn-fill" id="pwa-install-btn" hidden>Install App</button>
-          <button type="button" class="btn btn-line" id="pwa-notify-btn" hidden>Enable Notifications</button>
-        </div>
-        <p class="pwa-status" id="pwa-status" aria-live="polite"></p>
-        <p class="pwa-help" id="pwa-help" hidden></p>
-      </div>
-    </section>
+            <form id="player-password-form" class="player-card" autocomplete="on">
+              <h3>Password</h3>
+              <label>Current password <input id="set-pass-current" type="password" required minlength="6" autocomplete="current-password" /></label>
+              <label>New password <input id="set-pass-new" type="password" required minlength="6" autocomplete="new-password" /></label>
+              <p class="chat-intake-error" id="set-pass-error" hidden></p>
+              <p class="player-settings-ok" id="set-pass-ok" hidden></p>
+              <button type="submit" class="btn btn-fill">Update password</button>
+            </form>
 
-    <footer class="footer">
-      <div class="footer-row">
-        <p class="footer-brand">LUCKY VIPS GAME</p>
-        <p>Play responsibly. 18+ only.</p>
-      </div>
-    </footer>
-
-    <div class="social-dock" aria-label="Social links">
-      <button type="button" class="social-btn social-fb" id="fb-dock-btn" aria-label="Facebook pages" aria-expanded="false" aria-controls="fb-pop">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 8.2h2.3V5h-2.3C11.9 5 10 6.9 10 9.3v1.4H8v3.2h2V19h3.2v-5.1h2.2l.4-3.2h-2.6V9.3c0-.6.5-1.1 1.1-1.1z"/></svg>
-      </button>
-      <a class="social-btn social-wa" id="dock-wa" href="#" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.5 14.3c-.3-.1-1.6-.8-1.8-.9-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.2.1-.3.2-.6.1-.3-.1-1.2-.4-2.3-1.4-.8-.8-1.4-1.7-1.6-2-.1-.3 0-.4.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.2.8 3 .7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.3-.2-.6-.3zM12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.4 1.3 4.9L2 22l5.3-1.4c1.4.8 3 1.2 4.7 1.2 5.5 0 10-4.5 10-10S17.5 2 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3.1.8.8-3-.2-.3C4.1 15 3.6 13.5 3.6 12 3.6 7.4 7.4 3.6 12 3.6S20.4 7.4 20.4 12 16.6 20.2 12 20.2z"/></svg>
-      </a>
-      <a class="social-btn social-tg" id="dock-tg" href="#" target="_blank" rel="noopener noreferrer" aria-label="Telegram">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.6 4.3 3.9 11.1c-1.2.5-1.2 1.1-.2 1.4l4.5 1.4 1.7 5.3c.2.6.4.8.9.8.5 0 .7-.2 1-.5l2.5-2.4 5.2 3.8c1 .5 1.6.3 1.9-.9L23 5.7c.3-1.3-.5-1.9-1.4-1.4zM9.8 14.3l7.9-5c.4-.2.8 0 .5.3l-6.5 5.9-.3 2.9-1.6-3.9z"/></svg>
-      </a>
-      <div class="fb-pop" id="fb-pop" hidden></div>
-    </div>
-
-    <button type="button" class="to-top" id="to-top" aria-label="Back to top" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5.5 5.5 12h4v6.5h5V12h4L12 5.5z"/></svg>
-    </button>
-
-    <div class="chat" id="chat">
-      <div class="chat-panel" id="chat-panel" hidden>
-        <div class="chat-head">
-          <div class="chat-head-brand">
-            <img src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
-            <div>
-              <strong>Live chat</strong>
-              <small id="chat-status">Connected</small>
+            <div class="player-card">
+              <h3>Notifications</h3>
+              <p class="player-settings-lead">Get alerts on this phone or laptop when support replies.</p>
+              <button type="button" class="btn btn-line" id="player-notify-btn">Enable notifications</button>
+              <p class="player-settings-ok" id="player-notify-status" hidden></p>
             </div>
           </div>
-          <button type="button" class="chat-close" id="chat-close" aria-label="Close chat">Close</button>
-        </div>
-
-        <div class="chat-quick" id="chat-quick" hidden>
-          <button type="button" data-quick="I need help with a deposit">Deposit</button>
-          <button type="button" data-quick="I need help with a withdrawal">Withdraw</button>
-          <button type="button" data-quick="I need help with game links">Games</button>
-          <button type="button" data-quick="I have a question about my account">Account</button>
-        </div>
-
-        <form class="chat-intake" id="chat-intake" hidden autocomplete="on">
-          <p class="chat-intake-title">Start chat</p>
-          <label>
-            Name
-            <input id="chat-name" name="name" type="text" required maxlength="60" autocomplete="name" placeholder="Your name" />
-          </label>
-          <label>
-            Phone
-            <input id="chat-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
-          </label>
-          <label>
-            Email
-            <input id="chat-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email address" />
-          </label>
-          <p class="chat-intake-error" id="chat-intake-error" hidden></p>
-          <button type="submit" class="btn btn-fill" id="chat-start-btn">Start chatting</button>
-        </form>
-
-        <div class="chat-body" id="chat-body" hidden></div>
-
-        <form class="chat-form" id="chat-form" hidden>
-          <div class="chat-attach-row">
-            <label class="chat-attach-btn" for="chat-file">Attach</label>
-            <input type="file" id="chat-file" hidden accept="image/*,video/*,.pdf,.doc,.docx,.txt" />
-            <span class="chat-file-name" id="chat-file-name" hidden></span>
-            <button type="button" class="chat-file-clear" id="chat-file-clear" hidden aria-label="Remove file">&times;</button>
-          </div>
-          <div class="chat-compose">
-            <input id="chat-input" type="text" maxlength="2000" placeholder="Type a message…" autocomplete="off" />
-            <button type="submit" class="btn btn-fill">Send</button>
-          </div>
-        </form>
-      </div>
-      <button type="button" class="chat-fab" id="chat-fab" aria-label="Open live chat" aria-expanded="false" aria-controls="chat-panel">
-        Chat
-        <span class="chat-badge" id="chat-badge" hidden>0</span>
-      </button>
-    </div>
+        </section>
+      </main>
     </div>
 
     <script src="script.js"></script>
+    <script src="chat-media.js"></script>
     <script src="chat.js"></script>
+    <script src="player-shell.js"></script>
     <script src="pwa.js"></script>
   </body>
 </html>

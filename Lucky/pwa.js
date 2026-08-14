@@ -4,12 +4,17 @@
   const panel = qs("pwa-panel");
   const installBtn = qs("pwa-install-btn");
   const heroInstallBtn = qs("hero-install-btn");
+  const welcomeInstallBtn = qs("welcome-install-btn");
+  const welcomeInstallHint = qs("welcome-install-hint");
   const notifyBtn = qs("pwa-notify-btn");
+  const playerNotifyBtn = qs("player-notify-btn");
+  const playerNotifyStatus = qs("player-notify-status");
   const statusEl = qs("pwa-status");
   const helpEl = qs("pwa-help");
 
   let deferredPrompt = null;
   let swReg = null;
+  let pushBind = { conversationId: "", email: "" };
 
   function setStatus(text, isError = false) {
     if (!statusEl) return;
@@ -21,6 +26,12 @@
     if (!helpEl) return;
     helpEl.textContent = text || "";
     helpEl.hidden = !text;
+  }
+
+  function setWelcomeHint(text) {
+    if (!welcomeInstallHint) return;
+    welcomeInstallHint.textContent = text || "";
+    welcomeInstallHint.hidden = !text;
   }
 
   function isStandalone() {
@@ -52,6 +63,7 @@
   function showInstallButton(show) {
     if (installBtn) installBtn.hidden = !show;
     if (heroInstallBtn) heroInstallBtn.hidden = !show;
+    if (welcomeInstallBtn) welcomeInstallBtn.hidden = !show;
   }
 
   function showNotifyButton(show) {
@@ -70,15 +82,35 @@
     }
   }
 
+  function setPlayerNotifyStatus(text, isError = false) {
+    if (!playerNotifyStatus) return;
+    if (!text) {
+      playerNotifyStatus.hidden = true;
+      playerNotifyStatus.textContent = "";
+      return;
+    }
+    playerNotifyStatus.hidden = false;
+    playerNotifyStatus.textContent = text;
+    playerNotifyStatus.classList.toggle("is-error", Boolean(isError));
+  }
+
   async function refreshNotifyUi() {
     if (!pushSupported()) {
       showNotifyButton(false);
+      if (playerNotifyBtn) {
+        playerNotifyBtn.disabled = true;
+        playerNotifyBtn.textContent = "Not supported here";
+      }
       if (!isIos()) setHelp("Push notifications aren't supported on this device/browser.");
       return;
     }
 
     if (isIos() && !isStandalone()) {
       showNotifyButton(false);
+      if (playerNotifyBtn) {
+        playerNotifyBtn.disabled = false;
+        playerNotifyBtn.textContent = "Enable notifications";
+      }
       setHelp(
         "On iPhone/iPad: tap Share → Add to Home Screen, open the app from your home screen, then enable notifications."
       );
@@ -92,54 +124,87 @@
         const reg = swReg || (await navigator.serviceWorker.ready);
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          notifyBtn.textContent = "Notifications On";
-          notifyBtn.disabled = true;
+          if (notifyBtn) {
+            notifyBtn.textContent = "Notifications On";
+            notifyBtn.disabled = true;
+          }
+          if (playerNotifyBtn) {
+            playerNotifyBtn.textContent = "Notifications On";
+            playerNotifyBtn.disabled = true;
+          }
           setStatus("Notifications enabled.");
+          setPlayerNotifyStatus("Alerts enabled on this device.");
           setHelp("");
           return;
         }
       } catch {
         /* fall through */
       }
-      notifyBtn.textContent = "Enable Notifications";
-      notifyBtn.disabled = false;
+      if (notifyBtn) {
+        notifyBtn.textContent = "Enable Notifications";
+        notifyBtn.disabled = false;
+      }
+      if (playerNotifyBtn) {
+        playerNotifyBtn.textContent = "Enable notifications";
+        playerNotifyBtn.disabled = false;
+      }
       setStatus("Notifications allowed — tap to finish setup.");
     } else if (permission === "denied") {
-      notifyBtn.textContent = "Notifications Blocked";
-      notifyBtn.disabled = true;
+      if (notifyBtn) {
+        notifyBtn.textContent = "Notifications Blocked";
+        notifyBtn.disabled = true;
+      }
+      if (playerNotifyBtn) {
+        playerNotifyBtn.textContent = "Blocked in browser";
+        playerNotifyBtn.disabled = true;
+      }
       setStatus("Notifications are blocked in browser settings.");
+      setPlayerNotifyStatus("Notifications are blocked in browser settings.", true);
     } else {
-      notifyBtn.textContent = "Enable Notifications";
-      notifyBtn.disabled = false;
+      if (notifyBtn) {
+        notifyBtn.textContent = "Enable Notifications";
+        notifyBtn.disabled = false;
+      }
+      if (playerNotifyBtn) {
+        playerNotifyBtn.textContent = "Enable notifications";
+        playerNotifyBtn.disabled = false;
+      }
       setStatus("");
     }
   }
 
-  async function enableNotifications() {
+  async function enableNotifications(extra = {}) {
+    if (extra.conversationId) pushBind.conversationId = String(extra.conversationId);
+    if (extra.email) pushBind.email = String(extra.email).trim().toLowerCase();
+
     if (!pushSupported()) {
       setHelp("Push notifications aren't supported on this device/browser.");
-      return;
+      setPlayerNotifyStatus("Push notifications aren't supported on this device.", true);
+      return false;
     }
     if (isIos() && !isStandalone()) {
-      setHelp(
-        "On iPhone/iPad: tap Share → Add to Home Screen, open the app from your home screen, then enable notifications."
-      );
-      return;
+      const tip =
+        "On iPhone/iPad: tap Share → Add to Home Screen, open the app from your home screen, then enable notifications.";
+      setHelp(tip);
+      setPlayerNotifyStatus(tip, true);
+      return false;
     }
 
     try {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
         setStatus("Notifications were not enabled.", true);
+        setPlayerNotifyStatus("Notifications were not enabled.", true);
         await refreshNotifyUi();
-        return;
+        return false;
       }
 
       const keyRes = await fetch("/api/push/vapid-public-key");
       const keyData = await keyRes.json().catch(() => ({}));
       if (!keyRes.ok || !keyData.publicKey) {
         setStatus("Notifications aren't configured on the server yet.", true);
-        return;
+        setPlayerNotifyStatus("Notifications aren't configured on the server yet.", true);
+        return false;
       }
 
       const reg = swReg || (await navigator.serviceWorker.ready);
@@ -151,42 +216,83 @@
         });
       }
 
+      const payload = {
+        ...sub.toJSON(),
+        conversationId: pushBind.conversationId || "",
+        email: pushBind.email || "",
+      };
       const saveRes = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub.toJSON()),
+        body: JSON.stringify(payload),
       });
       if (!saveRes.ok) {
         setStatus("Could not save notification subscription.", true);
-        return;
+        setPlayerNotifyStatus("Could not save notification subscription.", true);
+        return false;
       }
 
       setStatus("Notifications enabled.");
+      setPlayerNotifyStatus("Alerts enabled — you'll hear/see support replies on this device.");
       setHelp("");
       await refreshNotifyUi();
+      return true;
     } catch {
       setStatus("Could not enable notifications on this device.", true);
+      setPlayerNotifyStatus("Could not enable notifications on this device.", true);
+      return false;
+    }
+  }
+
+  /** Re-bind existing subscription to the player's chat (no permission prompt if already granted). */
+  async function bindPush(extra = {}) {
+    if (extra.conversationId) pushBind.conversationId = String(extra.conversationId);
+    if (extra.email) pushBind.email = String(extra.email).trim().toLowerCase();
+    if (!pushBind.conversationId && !pushBind.email) return false;
+    if (!pushSupported() || Notification.permission !== "granted") return false;
+    try {
+      const reg = swReg || (await navigator.serviceWorker.ready);
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return false;
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...sub.toJSON(),
+          conversationId: pushBind.conversationId || "",
+          email: pushBind.email || "",
+        }),
+      });
+      return true;
+    } catch {
+      return false;
     }
   }
 
   async function promptInstall() {
+    setWelcomeHint("");
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice.catch(() => null);
       deferredPrompt = null;
       showInstallButton(false);
-      if (choice?.outcome === "accepted") setStatus("App installed.");
+      if (choice?.outcome === "accepted") {
+        setStatus("App installed.");
+        setWelcomeHint("App installed.");
+      }
       return;
     }
     if (isIos()) {
-      setHelp("On iPhone/iPad: tap Share → Add to Home Screen to install this app.");
+      const tip = "On iPhone/iPad: tap Share → Add to Home Screen.";
+      setHelp(tip);
       setStatus("Add to Home Screen from the Share menu.");
-      document.getElementById("pwa-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setWelcomeHint(tip);
       return;
     }
-    setHelp("Use your browser menu → Install app / Add to Home screen.");
+    const tip = "Use your browser menu → Install app / Add to Home screen.";
+    setHelp(tip);
     setStatus("Install from your browser menu if the prompt doesn’t appear yet.");
-    document.getElementById("pwa-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setWelcomeHint(tip);
   }
 
   function setupInstallFlow() {
@@ -204,12 +310,14 @@
       deferredPrompt = event;
       showInstallButton(true);
       setHelp("");
+      setWelcomeHint("");
     });
 
     window.addEventListener("appinstalled", () => {
       deferredPrompt = null;
       showInstallButton(false);
       setStatus("App installed.");
+      setWelcomeHint("");
     });
   }
 
@@ -220,13 +328,41 @@
     await refreshNotifyUi();
 
     const onInstallClick = () => {
-      promptInstall().catch(() => setHelp("Use your browser menu to install this app."));
+      promptInstall().catch(() => {
+        const tip = "Use your browser menu to install this app.";
+        setHelp(tip);
+        setWelcomeHint(tip);
+      });
     };
     installBtn?.addEventListener("click", onInstallClick);
     heroInstallBtn?.addEventListener("click", onInstallClick);
+    welcomeInstallBtn?.addEventListener("click", onInstallClick);
     notifyBtn?.addEventListener("click", () => {
       enableNotifications().catch(() => setStatus("Could not enable notifications.", true));
     });
+    playerNotifyBtn?.addEventListener("click", () => {
+      const session = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("lucky_chat_session_v1") || "null");
+        } catch {
+          return null;
+        }
+      })();
+      const player = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("lucky_player_cache") || "null");
+        } catch {
+          return null;
+        }
+      })();
+      enableNotifications({
+        conversationId: session?.conversationId || "",
+        email: session?.email || player?.email || "",
+      }).catch(() => setPlayerNotifyStatus("Could not enable notifications.", true));
+    });
+
+    window.luckyBindPush = bindPush;
+    window.luckyEnablePush = enableNotifications;
   }
 
   if (document.readyState === "loading") {

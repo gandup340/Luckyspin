@@ -1,10 +1,12 @@
 /* LUCKY VIPS GAME — service worker (PWA cache + Web Push) */
-const CACHE_NAME = "lucky-vips-shell-v1";
+const CACHE_NAME = "lucky-vips-shell-v2";
 const PRECACHE = [
   "/",
   "/index.html",
   "/styles.css",
   "/script.js",
+  "/chat-media.js",
+  "/chat.js",
   "/pwa.js",
   "/manifest.webmanifest",
   "/assets/icons/icon-192.png",
@@ -93,8 +95,10 @@ self.addEventListener("push", (event) => {
     icon: String(payload.icon || "/assets/icons/icon-192.png"),
     badge: String(payload.badge || "/assets/icons/icon-192.png"),
     data: { ...(payload.data || {}), url: targetUrl },
-    vibrate: [80, 40, 80],
+    vibrate: [120, 60, 120, 60, 180],
     renotify: true,
+    requireInteraction: false,
+    silent: false,
     tag: String(payload.tag || "lucky-vips"),
   };
 

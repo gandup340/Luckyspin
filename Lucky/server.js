@@ -13,6 +13,7 @@ const { WebSocketServer } = require("ws");
 const webpush = require("web-push");
 const { mountPlayerApi } = require("./player-api");
 const { dbEnabled } = require("./db");
+const { emailConfigured, smtpSettings } = require("./mail");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const PORT = Number(process.env.PORT) || 3000;
@@ -68,6 +69,12 @@ const CHAT_UPLOAD_TYPES = {
   "image/webp": { ext: ".webp", kind: "image" },
   "video/mp4": { ext: ".mp4", kind: "video" },
   "video/webm": { ext: ".webm", kind: "video" },
+  "audio/webm": { ext: ".webm", kind: "audio" },
+  "audio/ogg": { ext: ".ogg", kind: "audio" },
+  "audio/mpeg": { ext: ".mp3", kind: "audio" },
+  "audio/mp4": { ext: ".m4a", kind: "audio" },
+  "audio/wav": { ext: ".wav", kind: "audio" },
+  "audio/x-wav": { ext: ".wav", kind: "audio" },
   "application/pdf": { ext: ".pdf", kind: "file" },
   "application/msword": { ext: ".doc", kind: "file" },
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
@@ -96,7 +103,7 @@ const chatUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     if (CHAT_UPLOAD_TYPES[file.mimetype]) cb(null, true);
-    else cb(new Error("File type not allowed. Use photo, video, PDF, Word, Excel, or text."));
+    else cb(new Error("File type not allowed. Use photo, video, audio, PDF, Word, Excel, or text."));
   },
 });
 
@@ -119,6 +126,7 @@ const MAX_SPIN_PRIZES = 13;
 
 const tokens = new Map(); // token -> { expiresAt, userId, username }
 const sockets = new Set();
+const activeCalls = new Map(); // conversationId -> { customerWs, adminWs }
 
 function readJson(file, fallback) {
   try {
@@ -377,7 +385,63 @@ async function sendPushToAll({ title, body, icon, url, data, tag }) {
     store.subscriptions = keep;
     savePushSubscriptions(store);
   }
-  return { ok: true, sent, failed, removed, total: list.length };
+  return { ok: true, sent, failed, removed };
+}
+
+async function sendPushToTargets({ title, body, icon, url, data, tag, conversationId, email }) {
+  if (!PUSH_ENABLED) {
+    return { ok: false, error: "Push notifications are not configured (missing VAPID keys)." };
+  }
+  const store = getPushSubscriptions();
+  const list = Array.isArray(store.subscriptions) ? store.subscriptions : [];
+  const convoId = String(conversationId || "");
+  const mail = String(email || "").trim().toLowerCase();
+  const targets = list.filter((s) => {
+    if (convoId && String(s.conversationId || "") === convoId) return true;
+    if (mail && String(s.email || "").trim().toLowerCase() === mail) return true;
+    return false;
+  });
+  // Fallback: if nothing is bound yet, notify all device subscribers so laptop/phone still alert.
+  const useList = targets.length ? targets : list;
+  if (!useList.length) return { ok: true, sent: 0, failed: 0, removed: 0 };
+
+  const payload = JSON.stringify({
+    title: String(title || "LUCKY VIPS GAME").slice(0, 80),
+    body: String(body || "").slice(0, 180),
+    icon: String(icon || "/assets/icons/icon-192.png"),
+    badge: "/assets/icons/icon-192.png",
+    url: String(url || "/"),
+    tag: String(tag || "lucky-chat"),
+    data: data && typeof data === "object" ? data : {},
+  });
+
+  let sent = 0;
+  let failed = 0;
+  const dead = new Set();
+  await Promise.all(
+    useList.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+            expirationTime: sub.expirationTime ?? null,
+          },
+          payload
+        );
+        sent += 1;
+      } catch (err) {
+        const status = Number(err?.statusCode || 0);
+        failed += 1;
+        if (status === 404 || status === 410) dead.add(sub.endpoint);
+      }
+    })
+  );
+  if (dead.size) {
+    store.subscriptions = list.filter((s) => !dead.has(s.endpoint));
+    savePushSubscriptions(store);
+  }
+  return { ok: true, sent, failed, removed: dead.size };
 }
 
 function normalizePhone(phone) {
@@ -571,7 +635,7 @@ function sanitizeAttachment(raw) {
   if (!/^[a-zA-Z0-9._-]+$/.test(filename)) return null;
   const fullPath = path.join(UPLOADS_CHAT_DIR, filename);
   if (!fs.existsSync(fullPath)) return null;
-  const kind = ["image", "video", "file"].includes(raw.kind) ? raw.kind : "file";
+  const kind = ["image", "video", "audio", "file"].includes(raw.kind) ? raw.kind : "file";
   return {
     kind,
     url: `/uploads/chat/${filename}`,
@@ -585,6 +649,7 @@ function attachmentPreview(attachment) {
   if (!attachment) return "";
   if (attachment.kind === "image") return "Photo";
   if (attachment.kind === "video") return "Video";
+  if (attachment.kind === "audio") return "Voice message";
   return attachment.name ? `File: ${attachment.name}` : "Document";
 }
 
@@ -968,13 +1033,17 @@ app.post("/api/push/subscribe", (req, res) => {
   if (!Array.isArray(store.subscriptions)) store.subscriptions = [];
   const now = Date.now();
   const idx = store.subscriptions.findIndex((s) => s.endpoint === normalized.endpoint);
+  const conversationId = String(req.body?.conversationId || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 120);
   const entry = {
     ...normalized,
+    conversationId: isValidUuid(conversationId) ? conversationId : idx >= 0 ? store.subscriptions[idx].conversationId || "" : "",
+    email: email || (idx >= 0 ? store.subscriptions[idx].email || "" : ""),
     userAgent: String(req.get("user-agent") || "").slice(0, 300),
     createdAt: idx >= 0 ? store.subscriptions[idx].createdAt || now : now,
     updatedAt: now,
   };
-  if (idx >= 0) store.subscriptions[idx] = entry;
+  if (idx >= 0) store.subscriptions[idx] = { ...store.subscriptions[idx], ...entry };
   else store.subscriptions.push(entry);
   savePushSubscriptions(store);
   res.json({ ok: true });
@@ -1933,6 +2002,111 @@ wss.on("connection", (ws, req) => {
             (s.role === "customer" && s.conversationId === conversationId) ||
             s.role === "admin"
         );
+
+        // Alert player devices (phone + laptop) when support replies.
+        const pushBody =
+          entry.attachment?.kind === "audio"
+            ? "New voice message from support"
+            : entry.attachment?.kind === "image"
+              ? "New photo from support"
+              : entry.attachment?.kind === "video"
+                ? "New video from support"
+                : String(entry.text || "New support message").slice(0, 140);
+        sendPushToTargets({
+          title: "LUCKY VIPS GAME Support",
+          body: pushBody,
+          url: "/",
+          tag: `chat-${conversationId}`,
+          conversationId,
+          email: convo.email || "",
+          data: { conversationId, type: "chat_message" },
+        }).catch((err) => console.warn("chat push:", err?.message || err));
+        return;
+      }
+    }
+
+    // ---- Voice/video call signaling (WebRTC) ----
+    if (
+      msg.type === "call_invite" ||
+      msg.type === "call_accept" ||
+      msg.type === "call_reject" ||
+      msg.type === "call_end" ||
+      msg.type === "webrtc_signal"
+    ) {
+      const conversationId = String(msg.conversationId || ws.conversationId || "");
+      if (!conversationId) return;
+
+      if (msg.type === "call_invite") {
+        if (ws.role === "customer" && ws.conversationId !== conversationId) return;
+        if (ws.role === "admin" && !msg.conversationId) return;
+        const payload = {
+          type: "call_invite",
+          conversationId,
+          from: ws.role,
+          name: ws.role === "customer" ? msg.name || "Player" : "Support",
+        };
+        if (ws.role === "customer") {
+          broadcast(payload, (s) => s.role === "admin");
+        } else {
+          broadcast(
+            payload,
+            (s) => s.role === "customer" && s.conversationId === conversationId
+          );
+        }
+        return;
+      }
+
+      if (msg.type === "call_accept") {
+        const call = activeCalls.get(conversationId) || {};
+        if (ws.role === "admin") call.adminWs = ws;
+        if (ws.role === "customer") call.customerWs = ws;
+        // Ensure both sides are known from current sockets
+        for (const s of sockets) {
+          if (s.role === "customer" && s.conversationId === conversationId) call.customerWs = s;
+          if (s.role === "admin" && s === ws) call.adminWs = s;
+        }
+        activeCalls.set(conversationId, call);
+        broadcast(
+          { type: "call_accept", conversationId, from: ws.role },
+          (s) =>
+            (s.role === "customer" && s.conversationId === conversationId) ||
+            s.role === "admin"
+        );
+        return;
+      }
+
+      if (msg.type === "call_reject" || msg.type === "call_end") {
+        activeCalls.delete(conversationId);
+        broadcast(
+          { type: msg.type, conversationId, from: ws.role },
+          (s) =>
+            (s.role === "customer" && s.conversationId === conversationId) ||
+            s.role === "admin"
+        );
+        return;
+      }
+
+      if (msg.type === "webrtc_signal") {
+        const call = activeCalls.get(conversationId) || {};
+        const targetRole = ws.role === "admin" ? "customer" : "admin";
+        broadcast(
+          {
+            type: "webrtc_signal",
+            conversationId,
+            from: ws.role,
+            signal: msg.signal,
+          },
+          (s) => {
+            if (targetRole === "customer") {
+              return s.role === "customer" && s.conversationId === conversationId;
+            }
+            return s.role === "admin";
+          }
+        );
+        // Keep peer refs warm
+        if (ws.role === "admin") call.adminWs = ws;
+        if (ws.role === "customer") call.customerWs = ws;
+        activeCalls.set(conversationId, call);
       }
     }
   });
@@ -1943,6 +2117,13 @@ wss.on("connection", (ws, req) => {
         { type: "presence", conversationId: ws.conversationId, online: false },
         (s) => s.role === "admin"
       );
+      if (activeCalls.has(ws.conversationId)) {
+        activeCalls.delete(ws.conversationId);
+        broadcast(
+          { type: "call_end", conversationId: ws.conversationId, from: "customer" },
+          (s) => s.role === "admin"
+        );
+      }
     }
     sockets.delete(ws);
   });
@@ -1970,6 +2151,14 @@ server.listen(PORT, HOST, () => {
   );
   console.log(
     `Player DB (Neon):  ${dbEnabled() ? "connected (DATABASE_URL set)" : "disabled (set DATABASE_URL)"}`
+  );
+  const smtp = smtpSettings();
+  console.log(
+    `SMTP email:        ${
+      emailConfigured()
+        ? `configured (${smtp.host}:${smtp.port} as ${smtp.from})`
+        : "disabled (set SMTP_HOST / SMTP_USER / SMTP_PASS)"
+    }`
   );
   if (!IS_PROD) {
     console.log(`Mode:             development (set NODE_ENV=production for live hosting)`);

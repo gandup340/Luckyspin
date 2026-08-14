@@ -275,6 +275,7 @@
   const fbPop = document.getElementById("fb-pop");
 
   fbBtn?.addEventListener("click", () => {
+    if (!fbPop) return;
     const open = fbPop.hasAttribute("hidden");
     fbPop.toggleAttribute("hidden", !open);
     fbBtn.setAttribute("aria-expanded", String(open));

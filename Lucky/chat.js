@@ -5,15 +5,13 @@
   const MOBILE_MQ = window.matchMedia("(max-width: 900px)");
 
   const panel = document.getElementById("chat-panel");
-  const fab = document.getElementById("chat-fab");
   const badge = document.getElementById("chat-badge");
-  const closeBtn = document.getElementById("chat-close");
   const statusEl = document.getElementById("chat-status");
   const bodyEl = document.getElementById("chat-body");
   const quickEl = document.getElementById("chat-quick");
   const authEl = document.getElementById("chat-auth");
   const welcomeGate = document.getElementById("welcome-gate");
-  const siteShell = document.getElementById("site-shell");
+  const playerShell = document.getElementById("player-shell");
   const intake = document.getElementById("chat-intake");
   const intakeError = document.getElementById("chat-intake-error");
   const form = document.getElementById("chat-form");
@@ -21,6 +19,11 @@
   const fileInput = document.getElementById("chat-file");
   const fileName = document.getElementById("chat-file-name");
   const fileClear = document.getElementById("chat-file-clear");
+  const voiceBtn = document.getElementById("chat-voice-btn");
+  const callBtn = document.getElementById("chat-call-btn");
+  const hangBtn = document.getElementById("chat-hang-btn");
+  const localAudioEl = document.getElementById("chat-local-audio");
+  const remoteAudioEl = document.getElementById("chat-remote-audio");
   const signinForm = document.getElementById("chat-signin");
   const signupForm = document.getElementById("chat-signup");
   const verifyForm = document.getElementById("chat-verify");
@@ -28,13 +31,8 @@
   const resetForm = document.getElementById("chat-reset");
   const tabSignin = document.getElementById("chat-tab-signin");
   const tabSignup = document.getElementById("chat-tab-signup");
-  const openers = [
-    fab,
-    document.getElementById("open-support-btn"),
-    document.getElementById("hero-support-btn"),
-  ].filter(Boolean);
 
-  if (!panel || !fab || !form) return;
+  if (!panel || !form) return;
 
   let ws = null;
   let reconnectTimer = null;
@@ -125,16 +123,13 @@
   }
 
   function renderAttachment(attachment) {
+    if (window.LuckyChatMedia?.renderMediaAttachment) {
+      return window.LuckyChatMedia.renderMediaAttachment(attachment, esc);
+    }
     if (!attachment?.url) return "";
-    const url = esc(attachment.url);
-    const name = esc(attachment.name || "Download file");
-    if (attachment.kind === "image") {
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer"><img class="bubble-media" src="${url}" alt="${name}" loading="lazy" /></a>`;
-    }
-    if (attachment.kind === "video") {
-      return `<video class="bubble-media" src="${url}" controls preload="metadata"></video>`;
-    }
-    return `<a class="bubble-file" href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+    return `<a class="bubble-file" href="${esc(attachment.url)}" target="_blank" rel="noopener noreferrer">${esc(
+      attachment.name || "Download file"
+    )}</a>`;
   }
 
   function isAutoCaption(message) {
@@ -144,11 +139,19 @@
       text === "Photo" ||
       text === "Video" ||
       text === "Audio message" ||
+      text === "Voice message" ||
       text === message.attachment.name ||
       text.startsWith("Photo:") ||
       text.startsWith("Video:") ||
       text.startsWith("File:")
     );
+  }
+
+  function bindPushForChat() {
+    window.luckyBindPush?.({
+      conversationId,
+      email: profile?.email || player?.email || "",
+    });
   }
 
   function renderMessages() {
@@ -196,16 +199,22 @@
 
   function showWelcome(mode = "signin") {
     if (welcomeGate) welcomeGate.hidden = false;
-    if (siteShell) siteShell.hidden = true;
+    if (playerShell) playerShell.hidden = true;
     document.body.classList.add("is-welcome");
+    document.body.classList.remove("is-player");
     showAuthMode(mode);
     window.scrollTo(0, 0);
   }
 
   function enterSite() {
     if (welcomeGate) welcomeGate.hidden = true;
-    if (siteShell) siteShell.hidden = false;
     document.body.classList.remove("is-welcome");
+    document.body.classList.add("is-player");
+    if (window.luckyPlayerShell?.open) {
+      window.luckyPlayerShell.open();
+    } else if (playerShell) {
+      playerShell.hidden = false;
+    }
   }
 
   function showAuthMode(mode) {
@@ -271,16 +280,16 @@
     profile = profileFromPlayer(p);
     enterSite();
     if (!profile.email) {
-      setStatus("Add email in account to chat");
+      setStatus("Add email in settings to chat");
       return;
     }
     open = true;
     panel.hidden = false;
-    fab.setAttribute("aria-expanded", "true");
     setUnread(0);
     showChatUi();
     ensureSocket();
     if (ws?.readyState === WebSocket.OPEN) joinCustomer(profile);
+    window.luckyPlayerShell?.refreshUserChip?.();
   }
 
   function clearFile() {
@@ -321,6 +330,48 @@
     ws.send(JSON.stringify(payload));
     return true;
   }
+
+  const callController = window.LuckyChatMedia?.createCallController?.({
+    role: "customer",
+    getConversationId: () => conversationId,
+    sendJson,
+    localAudioEl,
+    remoteAudioEl,
+    callBtn,
+    hangBtn,
+    setStatus,
+    callerName: () => profile?.name || player?.name || "Player",
+    onIncoming: (msg, actions) => {
+      const ok = window.confirm(`${msg.name || "Support"} is calling. Accept?`);
+      if (ok) actions.accept();
+      else actions.reject();
+    },
+  });
+
+  window.LuckyChatMedia?.createVoiceController?.({
+    button: voiceBtn,
+    setStatus,
+    onRecorded: async (blob) => {
+      if (!conversationId) {
+        setStatus("Connect to chat first.");
+        return;
+      }
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setStatus("Reconnecting…");
+        ensureSocket();
+        return;
+      }
+      try {
+        setStatus("Sending voice…");
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+        const attachment = await uploadFile(file);
+        sendJson({ type: "message", text: "Voice message", attachment });
+        setStatus("Voice sent");
+      } catch (err) {
+        setStatus(err.message || "Could not send voice");
+      }
+    },
+  });
 
   function joinCustomer(details) {
     joining = true;
@@ -375,13 +426,32 @@
         showChatUi();
         renderMessages();
         setError(intakeError, "");
+        setStatus("Connected");
+        bindPushForChat();
+        if (typeof Notification !== "undefined" && Notification.permission === "default") {
+          setStatus("Connected — enable notifications in Settings for phone/laptop alerts");
+        }
+        return;
+      }
+
+      if (
+        msg.type === "call_invite" ||
+        msg.type === "call_accept" ||
+        msg.type === "call_reject" ||
+        msg.type === "call_end" ||
+        msg.type === "webrtc_signal"
+      ) {
+        callController?.handleServerEvent?.(msg);
         return;
       }
 
       if (msg.type === "message" && msg.conversationId === conversationId) {
         messages.push(msg.message);
         renderMessages();
-        if (!open && msg.message?.from === "admin") setUnread(unread + 1);
+        if (msg.message?.from === "admin") {
+          window.LuckyChatMedia?.playAlertSound?.();
+          if (!open) setUnread(unread + 1);
+        }
       }
     });
 
@@ -414,27 +484,12 @@
     }
   }
 
-  function openPanel() {
+  function openPlayerChat() {
     if (!(player?.email && token)) {
       showWelcome("signin");
       return;
     }
     startChatWithPlayer(player);
-  }
-
-  function closePanel() {
-    open = false;
-    panel.hidden = true;
-    fab.setAttribute("aria-expanded", "false");
-  }
-
-  function togglePanel() {
-    if (!(player?.email && token)) {
-      showWelcome("signin");
-      return;
-    }
-    if (open) closePanel();
-    else openPanel();
   }
 
   function showVerify(email, hint, devCode) {
@@ -459,18 +514,8 @@
     codeInput?.focus();
   }
 
-  openers.forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (el === fab) togglePanel();
-      else openPanel();
-    });
-  });
-
-  closeBtn?.addEventListener("click", () => closePanel());
-
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) closePanel();
+    if (e.key === "Escape") window.luckyPlayerShell?.closeDrawer?.();
   });
 
   tabSignin?.addEventListener("click", () => showAuthMode("signin"));
@@ -704,9 +749,18 @@
 
   restorePlayerSession().then((ok) => {
     if (ok && player?.email) {
-      enterSite();
+      startChatWithPlayer(player);
       return;
     }
     showWelcome("signin");
   });
+
+  window.luckyShowWelcome = showWelcome;
+  window.luckyOpenPlayerChat = openPlayerChat;
+  window.luckyUpdatePlayer = (next) => {
+    if (!next) return;
+    player = next;
+    cachePlayer(next, token);
+    if (player?.email) profile = profileFromPlayer(player);
+  };
 })();

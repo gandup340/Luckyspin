@@ -673,6 +673,18 @@ textarea {
   color: var(--teal-deep);
 }
 
+.chat-attach-btn.is-recording,
+.chat-attach-btn.chat-hang-btn {
+  border-color: #e11d48;
+  color: #e11d48;
+}
+
+.bubble-audio {
+  display: block;
+  width: min(100%, 16rem);
+  margin: 0.15rem 0;
+}
+
 .chat-file-name {
   flex: 1;
   min-width: 0;
