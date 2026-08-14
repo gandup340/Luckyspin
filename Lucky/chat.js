@@ -24,6 +24,8 @@
   const signinForm = document.getElementById("chat-signin");
   const signupForm = document.getElementById("chat-signup");
   const verifyForm = document.getElementById("chat-verify");
+  const forgotForm = document.getElementById("chat-forgot");
+  const resetForm = document.getElementById("chat-reset");
   const tabSignin = document.getElementById("chat-tab-signin");
   const tabSignup = document.getElementById("chat-tab-signup");
   const openers = [
@@ -210,18 +212,29 @@
     if (authEl) authEl.hidden = false;
     const isVerify = mode === "verify";
     const isSignup = mode === "signup";
+    const isForgot = mode === "forgot";
+    const isReset = mode === "reset";
+    const hideTabs = isVerify || isForgot || isReset;
     tabSignin?.classList.toggle("is-active", mode === "signin");
     tabSignup?.classList.toggle("is-active", isSignup);
-    if (tabSignin) tabSignin.hidden = isVerify;
-    if (tabSignup) tabSignup.hidden = isVerify;
+    if (tabSignin) tabSignin.hidden = hideTabs;
+    if (tabSignup) tabSignup.hidden = hideTabs;
     if (signinForm) signinForm.hidden = mode !== "signin";
     if (signupForm) signupForm.hidden = mode !== "signup";
     if (verifyForm) verifyForm.hidden = mode !== "verify";
+    if (forgotForm) forgotForm.hidden = mode !== "forgot";
+    if (resetForm) resetForm.hidden = mode !== "reset";
     const title = document.querySelector(".welcome-title");
     const lead = document.querySelector(".welcome-lead");
     if (isVerify) {
       if (title) title.textContent = "Almost there";
       if (lead) lead.textContent = "Confirm your email and you’re officially in the VIP circle.";
+    } else if (isForgot) {
+      if (title) title.textContent = "Forgot your password?";
+      if (lead) lead.textContent = "No stress — enter your email and we’ll send a reset code.";
+    } else if (isReset) {
+      if (title) title.textContent = "Choose a new password";
+      if (lead) lead.textContent = "Enter the code from your email, then set a fresh password.";
     } else if (isSignup) {
       if (title) title.textContent = "Join the VIP circle";
       if (lead) {
@@ -427,12 +440,23 @@
   function showVerify(email, hint, devCode) {
     pendingEmail = email;
     const hintEl = document.getElementById("chat-verify-hint");
+    const codeBox = document.getElementById("chat-verify-code-box");
+    const codeInput = document.getElementById("chat-verify-code");
     if (hintEl) {
       hintEl.textContent = hint || `Enter the 6-digit code sent to ${email}.`;
-      if (devCode) hintEl.textContent += ` Dev code: ${devCode}`;
+    }
+    if (codeBox) {
+      if (devCode) {
+        codeBox.hidden = false;
+        codeBox.textContent = `Your code: ${devCode}`;
+        if (codeInput) codeInput.value = String(devCode);
+      } else {
+        codeBox.hidden = true;
+        codeBox.textContent = "";
+      }
     }
     showWelcome("verify");
-    document.getElementById("chat-verify-code")?.focus();
+    codeInput?.focus();
   }
 
   openers.forEach((el) => {
@@ -451,6 +475,58 @@
 
   tabSignin?.addEventListener("click", () => showAuthMode("signin"));
   tabSignup?.addEventListener("click", () => showAuthMode("signup"));
+
+  document.getElementById("chat-forgot-btn")?.addEventListener("click", () => {
+    const email = String(document.getElementById("chat-login-email")?.value || "").trim();
+    const forgotEmail = document.getElementById("chat-forgot-email");
+    if (forgotEmail && email) forgotEmail.value = email;
+    showAuthMode("forgot");
+    forgotEmail?.focus();
+  });
+
+  document.getElementById("chat-forgot-back")?.addEventListener("click", () => showAuthMode("signin"));
+  document.getElementById("chat-reset-back")?.addEventListener("click", () => showAuthMode("signin"));
+
+  forgotForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = String(document.getElementById("chat-forgot-email")?.value || "")
+      .trim()
+      .toLowerCase();
+    const errEl = document.getElementById("chat-forgot-error");
+    setError(errEl, "");
+    const { res, data } = await api("/api/player/forgot-password", { email });
+    if (!res.ok) {
+      setError(errEl, data.error || "Could not send reset code");
+      return;
+    }
+    pendingEmail = email;
+    const hintEl = document.getElementById("chat-reset-hint");
+    if (hintEl) {
+      hintEl.textContent = data.message || `Enter the code sent to ${email}.`;
+      if (data.devCode) hintEl.textContent += ` Dev code: ${data.devCode}`;
+    }
+    showAuthMode("reset");
+    document.getElementById("chat-reset-code")?.focus();
+  });
+
+  resetForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = String(document.getElementById("chat-reset-code")?.value || "").trim();
+    const password = String(document.getElementById("chat-reset-password")?.value || "");
+    const errEl = document.getElementById("chat-reset-error");
+    setError(errEl, "");
+    const { res, data } = await api("/api/player/reset-password", {
+      email: pendingEmail,
+      code,
+      password,
+    });
+    if (!res.ok || !data.token) {
+      setError(errEl, data.error || "Could not reset password");
+      return;
+    }
+    cachePlayer(data.player, data.token);
+    startChatWithPlayer(data.player);
+  });
 
   signinForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -521,9 +597,15 @@
       return;
     }
     const hintEl = document.getElementById("chat-verify-hint");
-    if (hintEl) {
-      hintEl.textContent = data.message || "Code resent.";
-      if (data.devCode) hintEl.textContent += ` Dev code: ${data.devCode}`;
+    const codeBox = document.getElementById("chat-verify-code-box");
+    if (hintEl) hintEl.textContent = data.message || "Code resent.";
+    if (codeBox) {
+      if (data.devCode) {
+        codeBox.hidden = false;
+        codeBox.textContent = `Your code: ${data.devCode}`;
+        const codeInput = document.getElementById("chat-verify-code");
+        if (codeInput) codeInput.value = String(data.devCode);
+      }
     }
   });
 

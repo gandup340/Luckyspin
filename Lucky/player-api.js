@@ -55,6 +55,8 @@ async function ensureEmailSchema() {
   await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
   await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verify_code_hash TEXT`);
   await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS password_reset_code_hash TEXT`);
+  await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ`);
   await query(
     `CREATE UNIQUE INDEX IF NOT EXISTS players_email_unique ON players (lower(email)) WHERE email <> ''`
   );
@@ -97,6 +99,29 @@ async function issueVerification(player, { reason = "verify" } = {}) {
     previewCode: code,
   });
   return mail;
+}
+
+async function issuePasswordReset(player) {
+  const code = makeVerifyCode();
+  const expires = new Date(Date.now() + VERIFY_MINUTES * 60 * 1000);
+  await query(
+    `UPDATE players
+     SET password_reset_code_hash = $2,
+         password_reset_expires_at = $3,
+         updated_at = now()
+     WHERE id = $1`,
+    [player.id, hashVerifyCode(code), expires.toISOString()]
+  );
+  const subject = "Reset your LUCKY VIPS GAME password";
+  const text = `Your password reset code is ${code}. It expires in ${VERIFY_MINUTES} minutes. If you did not request this, ignore this email.`;
+  const html = `<p>Your password reset code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${VERIFY_MINUTES} minutes.</p><p>If you did not request this, you can ignore this email.</p>`;
+  return sendMail({
+    to: player.email,
+    subject,
+    text,
+    html,
+    previewCode: code,
+  });
 }
 
 async function requireDb(_req, res, next) {
@@ -225,7 +250,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         email,
         message: mail.sent
           ? "Check your email for a verification code."
-          : "Enter the verification code to finish signup.",
+          : "Email sending is not configured yet — use the code shown below.",
         player: publicPlayer({ ...player, email_verified: false }),
       };
       if (mail.previewCode) payload.devCode = mail.previewCode;
@@ -300,6 +325,79 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     } catch (err) {
       console.error("resend-verification:", err.message || err);
       res.status(500).json({ error: "Could not resend code" });
+    }
+  });
+
+  app.post("/api/player/forgot-password", requireDb, async (req, res) => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      if (!EMAIL_RE.test(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+      }
+      const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
+      const player = found.rows[0];
+      const generic = {
+        ok: true,
+        email,
+        message: "If that email is registered, a reset code is on the way.",
+      };
+      if (!player) return res.json(generic);
+
+      const mail = await issuePasswordReset(player);
+      if (mail.previewCode) generic.devCode = mail.previewCode;
+      if (!mail.sent && mail.previewCode) {
+        generic.message = "Enter the reset code below to choose a new password.";
+      }
+      res.json(generic);
+    } catch (err) {
+      console.error("forgot-password:", err.message || err);
+      res.status(500).json({ error: "Could not start password reset" });
+    }
+  });
+
+  app.post("/api/player/reset-password", requireDb, async (req, res) => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      const code = String(req.body?.code || "").trim();
+      const password = String(req.body?.password || "");
+      if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Enter your email and the 6-digit code" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
+      const player = found.rows[0];
+      if (!player) return res.status(400).json({ error: "Invalid or expired reset code" });
+      if (
+        !player.password_reset_code_hash ||
+        !player.password_reset_expires_at ||
+        new Date(player.password_reset_expires_at).getTime() < Date.now()
+      ) {
+        return res.status(400).json({ error: "Code expired. Request a new one." });
+      }
+      if (hashVerifyCode(code) !== player.password_reset_code_hash) {
+        return res.status(400).json({ error: "Invalid reset code" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const updated = await query(
+        `UPDATE players
+         SET password_hash = $2,
+             password_reset_code_hash = NULL,
+             password_reset_expires_at = NULL,
+             email_verified = true,
+             updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [player.id, passwordHash]
+      );
+      await query(`DELETE FROM player_sessions WHERE player_id = $1`, [player.id]);
+      const token = await createSession(player.id);
+      res.json({ ok: true, token, player: publicPlayer(updated.rows[0]) });
+    } catch (err) {
+      console.error("reset-password:", err.message || err);
+      res.status(500).json({ error: "Could not reset password" });
     }
   });
 

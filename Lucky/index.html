@@ -61,6 +61,35 @@
             </label>
             <p class="chat-intake-error" id="chat-signin-error" hidden></p>
             <button type="submit" class="btn btn-fill">Sign in &amp; enter</button>
+            <button type="button" class="welcome-forgot" id="chat-forgot-btn">Forgot password?</button>
+          </form>
+
+          <form class="chat-intake welcome-form" id="chat-forgot" hidden autocomplete="on">
+            <p class="chat-intake-title">Forgot password</p>
+            <p class="chat-verify-hint">Enter your account email and we’ll send a reset code.</p>
+            <label>
+              Email
+              <input id="chat-forgot-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="you@email.com" />
+            </label>
+            <p class="chat-intake-error" id="chat-forgot-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Send reset code</button>
+            <button type="button" class="btn btn-line" id="chat-forgot-back">Back to sign in</button>
+          </form>
+
+          <form class="chat-intake welcome-form" id="chat-reset" hidden autocomplete="on">
+            <p class="chat-intake-title">Set new password</p>
+            <p class="chat-verify-hint" id="chat-reset-hint">Enter the 6-digit code and your new password.</p>
+            <label>
+              Code
+              <input id="chat-reset-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
+            </label>
+            <label>
+              New password
+              <input id="chat-reset-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="New password" />
+            </label>
+            <p class="chat-intake-error" id="chat-reset-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Update password &amp; enter</button>
+            <button type="button" class="btn btn-line" id="chat-reset-back">Back to sign in</button>
           </form>
 
           <form class="chat-intake welcome-form" id="chat-signup" hidden autocomplete="on">
@@ -87,6 +116,7 @@
           <form class="chat-intake welcome-form" id="chat-verify" hidden autocomplete="one-time-code">
             <p class="chat-intake-title">Verify your email</p>
             <p class="chat-verify-hint" id="chat-verify-hint">Enter the 6-digit code we sent you — then you’re in.</p>
+            <p class="chat-code-box" id="chat-verify-code-box" hidden></p>
             <label>
               Code
               <input id="chat-verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />

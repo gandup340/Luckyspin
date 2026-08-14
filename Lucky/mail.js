@@ -1,7 +1,5 @@
 const crypto = require("crypto");
 
-const IS_PROD = process.env.NODE_ENV === "production";
-
 function emailConfigured() {
   return Boolean(
     String(process.env.RESEND_API_KEY || "").trim() ||
@@ -55,7 +53,7 @@ async function sendViaSmtp({ to, subject, text, html }) {
 
 /**
  * Send transactional email. Returns { sent, previewCode }.
- * previewCode is only set when mail is not configured (dev / fallback).
+ * If mail cannot be delivered, previewCode is always returned so signup/reset can continue.
  */
 async function sendMail({ to, subject, text, html, previewCode }) {
   try {
@@ -70,11 +68,9 @@ async function sendMail({ to, subject, text, html, previewCode }) {
   }
 
   console.log(`[email:fallback] to=${to} subject=${subject}\n${text}`);
-  const allowPreview =
-    !IS_PROD || String(process.env.EMAIL_SHOW_CODE || "").trim() === "1";
   return {
     sent: false,
-    previewCode: allowPreview ? previewCode || null : null,
+    previewCode: previewCode || null,
   };
 }
 

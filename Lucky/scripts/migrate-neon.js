@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS players (
   email_verified BOOLEAN NOT NULL DEFAULT false,
   email_verify_code_hash TEXT,
   email_verify_expires_at TIMESTAMPTZ,
+  password_reset_code_hash TEXT,
+  password_reset_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

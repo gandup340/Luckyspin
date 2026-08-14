@@ -285,6 +285,44 @@ img {
   filter: brightness(1.06);
 }
 
+.welcome-forgot {
+  display: block;
+  width: 100%;
+  margin-top: 0.15rem;
+  border: 0;
+  background: transparent;
+  color: var(--teal-deep);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  padding: 0.35rem;
+}
+
+.welcome-forgot:hover {
+  color: var(--flare);
+  text-decoration: underline;
+}
+
+.chat-code-box {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed rgba(43, 184, 174, 0.55);
+  border-radius: var(--radius);
+  background: rgba(43, 184, 174, 0.12);
+  color: var(--teal-deep);
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.chat-code-box[hidden] {
+  display: none !important;
+}
+
 .site-shell[hidden] {
   display: none !important;
 }
