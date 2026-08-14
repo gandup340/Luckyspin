@@ -1,18 +1,27 @@
 (() => {
   const TOKEN_KEY = "lucky_player_token";
+  const PLAYER_KEY = "lucky_player_cache";
   let token = localStorage.getItem(TOKEN_KEY) || "";
   let player = null;
   let mode = "login";
+  let pendingEmail = "";
 
   const authView = document.getElementById("auth-view");
   const appView = document.getElementById("app-view");
+  const authForm = document.getElementById("auth-form");
+  const verifyForm = document.getElementById("verify-form");
 
   async function api(path, opts = {}) {
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(path, { ...opts, headers });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Request failed");
+    if (!res.ok) {
+      const err = new Error(data.error || "Request failed");
+      err.data = data;
+      err.status = res.status;
+      throw err;
+    }
     return data;
   }
 
@@ -24,6 +33,40 @@
     const el = document.getElementById("auth-error");
     el.hidden = !msg;
     el.textContent = msg || "";
+  }
+
+  function showVerifyError(msg) {
+    const el = document.getElementById("verify-error");
+    if (!el) return;
+    el.hidden = !msg;
+    el.textContent = msg || "";
+  }
+
+  function cacheSession(nextToken, nextPlayer) {
+    token = nextToken || "";
+    player = nextPlayer || null;
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+    if (player) localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
+    else localStorage.removeItem(PLAYER_KEY);
+  }
+
+  function showVerify(email, hint, devCode) {
+    pendingEmail = email;
+    authForm.hidden = true;
+    verifyForm.hidden = false;
+    document.getElementById("auth-title").textContent = "Verify email";
+    const hintEl = document.getElementById("verify-hint");
+    if (hintEl) {
+      hintEl.textContent = hint || `Enter the 6-digit code sent to ${email}.`;
+      if (devCode) hintEl.textContent += ` Dev code: ${devCode}`;
+    }
+  }
+
+  function showAuthForms() {
+    authForm.hidden = false;
+    verifyForm.hidden = true;
+    document.getElementById("auth-title").textContent = mode === "login" ? "Sign in" : "Create account";
   }
 
   function setPanel(name) {
@@ -51,6 +94,7 @@
   async function refreshMe() {
     const data = await api("/api/player/me");
     player = data.player;
+    cacheSession(token, player);
     renderPlayer();
   }
 
@@ -93,36 +137,79 @@
 
   document.getElementById("auth-toggle").addEventListener("click", () => {
     mode = mode === "login" ? "register" : "login";
-    document.getElementById("auth-title").textContent = mode === "login" ? "Sign in" : "Create account";
     document.getElementById("auth-submit").textContent = mode === "login" ? "Sign in" : "Register";
     document.getElementById("register-extra").hidden = mode !== "register";
     document.getElementById("auth-toggle").textContent =
       mode === "login" ? "Need an account? Register" : "Have an account? Sign in";
+    document.getElementById("auth-password").autocomplete =
+      mode === "login" ? "current-password" : "new-password";
+    showAuthForms();
     showAuthError("");
   });
 
-  document.getElementById("auth-form").addEventListener("submit", async (e) => {
+  authForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     showAuthError("");
     try {
-      const body = {
-        username: document.getElementById("auth-username").value,
-        password: document.getElementById("auth-password").value,
-      };
+      const email = document.getElementById("auth-email").value.trim().toLowerCase();
+      const password = document.getElementById("auth-password").value;
+      const body = { email, password };
       if (mode === "register") {
         body.name = document.getElementById("auth-name").value;
+        body.phone = document.getElementById("auth-phone").value;
         body.referralCode = document.getElementById("auth-referral").value;
       }
-      const data = await api(mode === "login" ? "/api/player/login" : "/api/player/register", {
+      const path = mode === "login" ? "/api/player/login" : "/api/player/register";
+      const res = await fetch(path, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      token = data.token;
-      localStorage.setItem(TOKEN_KEY, token);
-      player = data.player;
+      const data = await res.json().catch(() => ({}));
+      if (data.needsVerification) {
+        showVerify(data.email || email, data.message || data.error, data.devCode);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      cacheSession(data.token, data.player);
       await enterApp();
     } catch (err) {
       showAuthError(err.message);
+    }
+  });
+
+  verifyForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showVerifyError("");
+    try {
+      const data = await api("/api/player/verify-email", {
+        method: "POST",
+        body: JSON.stringify({
+          email: pendingEmail,
+          code: document.getElementById("auth-code").value.trim(),
+        }),
+      });
+      cacheSession(data.token, data.player);
+      await enterApp();
+    } catch (err) {
+      showVerifyError(err.message);
+    }
+  });
+
+  document.getElementById("auth-resend")?.addEventListener("click", async () => {
+    showVerifyError("");
+    try {
+      const data = await api("/api/player/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email: pendingEmail }),
+      });
+      const hintEl = document.getElementById("verify-hint");
+      if (hintEl) {
+        hintEl.textContent = data.message || "Code resent.";
+        if (data.devCode) hintEl.textContent += ` Dev code: ${data.devCode}`;
+      }
+    } catch (err) {
+      showVerifyError(err.message);
     }
   });
 
@@ -132,11 +219,10 @@
     } catch {
       /* ignore */
     }
-    token = "";
-    localStorage.removeItem(TOKEN_KEY);
-    player = null;
+    cacheSession("", null);
     appView.hidden = true;
     authView.hidden = false;
+    showAuthForms();
   });
 
   document.querySelectorAll("[data-go]").forEach((btn) => {
