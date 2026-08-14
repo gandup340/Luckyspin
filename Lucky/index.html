@@ -6,7 +6,7 @@
     <title>LUCKY VIPS GAME — Official Game Links</title>
     <meta
       name="description"
-      content="LUCKY VIPS GAME official portal. Verified player game links, Facebook Messenger support, and Facebook pages."
+      content="LUCKY VIPS GAME official portal. Verified player game links, chat support, and Facebook pages."
     />
     <meta name="theme-color" content="#141618" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -35,7 +35,7 @@
         <a href="/spin/">Spin</a>
         <a href="#facebook">Facebook</a>
         <a href="#payments">Pay</a>
-        <a class="nav-text-btn" id="open-support-btn" href="#" target="_blank" rel="noopener noreferrer">Support</a>
+        <button type="button" class="nav-text-btn" id="open-support-btn">Chat</button>
       </nav>
       <a class="btn btn-fill header-enter" href="#games">Enter</a>
     </header>
@@ -54,7 +54,7 @@
             <a class="btn btn-fill" href="#games">Open game links</a>
             <a class="btn btn-fill" href="/app/">Player login</a>
             <button type="button" class="btn btn-line" id="hero-install-btn" hidden>Install App</button>
-            <a class="btn btn-line" id="hero-support-btn" href="#" target="_blank" rel="noopener noreferrer">Message on Messenger</a>
+            <button type="button" class="btn btn-line" id="hero-support-btn">Chat</button>
             <a class="btn btn-line" href="/spin/">Spin & win</a>
           </div>
         </div>
@@ -158,12 +158,116 @@
     </button>
 
     <div class="chat" id="chat">
-      <a class="chat-fab" id="messenger-fab" href="#" target="_blank" rel="noopener noreferrer" aria-label="Message us on Facebook Messenger">
-        Messenger
-      </a>
+      <div class="chat-panel" id="chat-panel" hidden>
+        <div class="chat-head">
+          <div>
+            <strong>Live chat</strong>
+            <small id="chat-status">Sign in to chat</small>
+          </div>
+          <button type="button" class="chat-close" id="chat-close" aria-label="Close chat">Close</button>
+        </div>
+
+        <div class="chat-quick" id="chat-quick" hidden>
+          <button type="button" data-quick="I need help with a deposit">Deposit</button>
+          <button type="button" data-quick="I need help with a withdrawal">Withdraw</button>
+          <button type="button" data-quick="I need help with game links">Games</button>
+          <button type="button" data-quick="I have a question about my account">Account</button>
+        </div>
+
+        <div class="chat-auth" id="chat-auth" hidden>
+          <div class="chat-auth-tabs" role="tablist">
+            <button type="button" class="chat-auth-tab is-active" id="chat-tab-signin" data-mode="signin">Sign in</button>
+            <button type="button" class="chat-auth-tab" id="chat-tab-signup" data-mode="signup">Sign up</button>
+          </div>
+
+          <form class="chat-intake" id="chat-signin" autocomplete="on">
+            <label>
+              Email
+              <input id="chat-login-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email" />
+            </label>
+            <label>
+              Password
+              <input id="chat-login-password" name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Password" />
+            </label>
+            <p class="chat-intake-error" id="chat-signin-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Sign in</button>
+          </form>
+
+          <form class="chat-intake" id="chat-signup" hidden autocomplete="on">
+            <label>
+              Email
+              <input id="chat-reg-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email" />
+            </label>
+            <label>
+              Password
+              <input id="chat-reg-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Password (min 6)" />
+            </label>
+            <label>
+              Name
+              <input id="chat-reg-name" name="name" type="text" required maxlength="80" autocomplete="name" placeholder="Your name" />
+            </label>
+            <label>
+              Phone
+              <input id="chat-reg-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
+            </label>
+            <p class="chat-intake-error" id="chat-signup-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Create account</button>
+          </form>
+
+          <form class="chat-intake" id="chat-verify" hidden autocomplete="one-time-code">
+            <p class="chat-intake-title">Verify email</p>
+            <p class="chat-verify-hint" id="chat-verify-hint">Enter the 6-digit code sent to your email.</p>
+            <label>
+              Code
+              <input id="chat-verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
+            </label>
+            <p class="chat-intake-error" id="chat-verify-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Verify &amp; start chat</button>
+            <button type="button" class="btn btn-line" id="chat-resend-btn">Resend code</button>
+          </form>
+        </div>
+
+        <form class="chat-intake" id="chat-intake" hidden autocomplete="on">
+          <p class="chat-intake-title">Start chat</p>
+          <label>
+            Name
+            <input id="chat-name" name="name" type="text" required maxlength="60" autocomplete="name" placeholder="Your name" />
+          </label>
+          <label>
+            Phone
+            <input id="chat-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
+          </label>
+          <label>
+            Email
+            <input id="chat-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email address" />
+          </label>
+          <p class="chat-intake-error" id="chat-intake-error" hidden></p>
+          <button type="submit" class="btn btn-fill" id="chat-start-btn">Start chatting</button>
+        </form>
+
+        <div class="chat-body" id="chat-body" hidden></div>
+
+        <form class="chat-form" id="chat-form" hidden>
+          <div class="chat-attach-row">
+            <label class="chat-attach-btn" for="chat-file">Attach</label>
+            <input type="file" id="chat-file" hidden accept="image/*,video/*,.pdf,.doc,.docx,.txt" />
+            <span class="chat-file-name" id="chat-file-name" hidden></span>
+            <button type="button" class="chat-file-clear" id="chat-file-clear" hidden aria-label="Remove file">&times;</button>
+          </div>
+          <div class="chat-compose">
+            <input id="chat-input" type="text" maxlength="2000" placeholder="Type a message…" autocomplete="off" />
+            <button type="submit" class="btn btn-fill">Send</button>
+          </div>
+        </form>
+      </div>
+      <button type="button" class="chat-fab" id="chat-fab" aria-label="Open live chat" aria-expanded="false" aria-controls="chat-panel">
+        Chat
+        <span class="chat-badge" id="chat-badge" hidden>0</span>
+      </button>
     </div>
 
     <script src="script.js"></script>
+    <script src="chat.js"></script>
     <script src="pwa.js"></script>
   </body>
 </html>

@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS players (
   balance_cents INTEGER NOT NULL DEFAULT 0,
   vip_tier TEXT NOT NULL DEFAULT 'bronze',
   role TEXT NOT NULL DEFAULT 'player',
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  email_verify_code_hash TEXT,
+  email_verify_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -85,6 +88,7 @@ CREATE TABLE IF NOT EXISTS referral_spins (
 CREATE INDEX IF NOT EXISTS idx_deposits_player ON deposits(player_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_player ON withdrawals(player_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_player ON player_sessions(player_id);
+CREATE UNIQUE INDEX IF NOT EXISTS players_email_unique ON players (lower(email)) WHERE email <> '';
 `;
 
 async function main() {

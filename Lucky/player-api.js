@@ -1,9 +1,12 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { dbEnabled, query, withTransaction } = require("./db");
+const { sendMail, makeVerifyCode, hashVerifyCode } = require("./mail");
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_DAYS = 30;
+const VERIFY_MINUTES = 30;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function publicPlayer(row) {
   if (!row) return null;
@@ -13,6 +16,7 @@ function publicPlayer(row) {
     name: row.name || "",
     phone: row.phone || "",
     email: row.email || "",
+    emailVerified: Boolean(row.email_verified),
     facebookName: row.facebook_name || "",
     referralCode: row.referral_code,
     points: Number(row.points || 0),
@@ -28,6 +32,71 @@ function makeReferralCode() {
 
 function makeToken() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function normalizeEmail(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 120);
+}
+
+function usernameFromEmail(email) {
+  const local = String(email.split("@")[0] || "player")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 28);
+  const base = local.length >= 3 ? local : `player${local}`;
+  return base.slice(0, 28);
+}
+
+async function ensureEmailSchema() {
+  if (!dbEnabled()) return;
+  await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
+  await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verify_code_hash TEXT`);
+  await query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMPTZ`);
+  await query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS players_email_unique ON players (lower(email)) WHERE email <> ''`
+  );
+}
+
+async function createSession(playerId) {
+  const token = makeToken();
+  const expires = new Date(Date.now() + SESSION_DAYS * 86400000);
+  await query(`INSERT INTO player_sessions (token, player_id, expires_at) VALUES ($1,$2,$3)`, [
+    token,
+    playerId,
+    expires.toISOString(),
+  ]);
+  return token;
+}
+
+async function issueVerification(player, { reason = "verify" } = {}) {
+  const code = makeVerifyCode();
+  const expires = new Date(Date.now() + VERIFY_MINUTES * 60 * 1000);
+  await query(
+    `UPDATE players
+     SET email_verify_code_hash = $2,
+         email_verify_expires_at = $3,
+         email_verified = false,
+         updated_at = now()
+     WHERE id = $1`,
+    [player.id, hashVerifyCode(code), expires.toISOString()]
+  );
+  const subject =
+    reason === "resend"
+      ? "Your LUCKY VIPS GAME verification code"
+      : "Verify your LUCKY VIPS GAME email";
+  const text = `Your verification code is ${code}. It expires in ${VERIFY_MINUTES} minutes.`;
+  const html = `<p>Your verification code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${VERIFY_MINUTES} minutes.</p>`;
+  const mail = await sendMail({
+    to: player.email,
+    subject,
+    text,
+    html,
+    previewCode: code,
+  });
+  return mail;
 }
 
 async function requireDb(_req, res, next) {
@@ -67,26 +136,39 @@ async function playerAuth(req, res, next) {
 }
 
 function mountPlayerApi(app, { auth, requireAdmin }) {
+  ensureEmailSchema().catch((err) => {
+    console.error("ensureEmailSchema:", err.message || err);
+  });
+
   app.post("/api/player/register", requireDb, async (req, res) => {
     try {
-      const username = String(req.body?.username || "")
-        .trim()
-        .toLowerCase()
-        .slice(0, 40);
+      const email = normalizeEmail(req.body?.email);
       const password = String(req.body?.password || "");
       const name = String(req.body?.name || "").trim().slice(0, 80);
       const phone = String(req.body?.phone || "").trim().slice(0, 30);
-      const email = String(req.body?.email || "").trim().slice(0, 120);
       const referralFrom = String(req.body?.referralCode || "")
         .trim()
         .toLowerCase()
         .slice(0, 32);
+      let username = String(req.body?.username || "")
+        .trim()
+        .toLowerCase()
+        .slice(0, 40);
 
-      if (!/^[a-z0-9_]{3,40}$/.test(username)) {
-        return res.status(400).json({ error: "Username must be 3–40 letters, numbers, or _" });
+      if (!EMAIL_RE.test(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
       }
       if (password.length < 6) {
         return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      if (!username) username = usernameFromEmail(email);
+      if (!/^[a-z0-9_]{3,40}$/.test(username)) {
+        return res.status(400).json({ error: "Username must be 3–40 letters, numbers, or _" });
+      }
+
+      const phoneDigits = phone.replace(/\D/g, "");
+      if (phone && phoneDigits.length < 7) {
+        return res.status(400).json({ error: "Enter a valid phone number" });
       }
 
       let referredBy = null;
@@ -98,19 +180,26 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       let referralCode = makeReferralCode();
       let player;
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 8; i += 1) {
         try {
           const inserted = await query(
-            `INSERT INTO players (username, password_hash, name, phone, email, referral_code, referred_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)
+            `INSERT INTO players (username, password_hash, name, phone, email, referral_code, referred_by, email_verified)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,false)
              RETURNING *`,
-            [username, passwordHash, name, phone, email, referralCode, referredBy]
+            [username, passwordHash, name || username, phone, email, referralCode, referredBy]
           );
           player = inserted.rows[0];
           break;
         } catch (err) {
           if (String(err.code) === "23505" && String(err.constraint || "").includes("username")) {
-            return res.status(409).json({ error: "Username already taken" });
+            if (req.body?.username) {
+              return res.status(409).json({ error: "Username already taken" });
+            }
+            username = `${usernameFromEmail(email)}${crypto.randomInt(10, 99)}`.slice(0, 40);
+            continue;
+          }
+          if (String(err.code) === "23505" && String(err.constraint || "").includes("email")) {
+            return res.status(409).json({ error: "Email already registered. Sign in instead." });
           }
           if (String(err.code) === "23505") {
             referralCode = makeReferralCode();
@@ -129,38 +218,138 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         );
       }
 
-      const token = makeToken();
-      const expires = new Date(Date.now() + SESSION_DAYS * 86400000);
-      await query(
-        `INSERT INTO player_sessions (token, player_id, expires_at) VALUES ($1,$2,$3)`,
-        [token, player.id, expires.toISOString()]
-      );
-
-      res.json({ ok: true, token, player: publicPlayer(player) });
+      const mail = await issueVerification(player);
+      const payload = {
+        ok: true,
+        needsVerification: true,
+        email,
+        message: mail.sent
+          ? "Check your email for a verification code."
+          : "Enter the verification code to finish signup.",
+        player: publicPlayer({ ...player, email_verified: false }),
+      };
+      if (mail.previewCode) payload.devCode = mail.previewCode;
+      res.json(payload);
     } catch (err) {
       console.error("register:", err.message || err);
       res.status(500).json({ error: "Registration failed" });
     }
   });
 
+  app.post("/api/player/verify-email", requireDb, async (req, res) => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      const code = String(req.body?.code || "").trim();
+      if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Enter your email and the 6-digit code" });
+      }
+      const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
+      const player = found.rows[0];
+      if (!player) return res.status(404).json({ error: "Account not found" });
+      if (player.email_verified) {
+        const token = await createSession(player.id);
+        return res.json({ ok: true, token, player: publicPlayer(player) });
+      }
+      if (
+        !player.email_verify_code_hash ||
+        !player.email_verify_expires_at ||
+        new Date(player.email_verify_expires_at).getTime() < Date.now()
+      ) {
+        return res.status(400).json({ error: "Code expired. Request a new one." });
+      }
+      if (hashVerifyCode(code) !== player.email_verify_code_hash) {
+        return res.status(400).json({ error: "Invalid verification code" });
+      }
+      const updated = await query(
+        `UPDATE players
+         SET email_verified = true,
+             email_verify_code_hash = NULL,
+             email_verify_expires_at = NULL,
+             updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [player.id]
+      );
+      const token = await createSession(player.id);
+      res.json({ ok: true, token, player: publicPlayer(updated.rows[0]) });
+    } catch (err) {
+      console.error("verify-email:", err.message || err);
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  app.post("/api/player/resend-verification", requireDb, async (req, res) => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      if (!EMAIL_RE.test(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+      }
+      const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
+      const player = found.rows[0];
+      if (!player) return res.status(404).json({ error: "Account not found" });
+      if (player.email_verified) {
+        return res.json({ ok: true, alreadyVerified: true, message: "Email already verified. Sign in." });
+      }
+      const mail = await issueVerification(player, { reason: "resend" });
+      const payload = {
+        ok: true,
+        message: mail.sent ? "Verification code sent." : "Verification code ready.",
+      };
+      if (mail.previewCode) payload.devCode = mail.previewCode;
+      res.json(payload);
+    } catch (err) {
+      console.error("resend-verification:", err.message || err);
+      res.status(500).json({ error: "Could not resend code" });
+    }
+  });
+
   app.post("/api/player/login", requireDb, async (req, res) => {
     try {
-      const username = String(req.body?.username || "")
+      const password = String(req.body?.password || "");
+      const email = normalizeEmail(req.body?.email);
+      const username = String(req.body?.username || req.body?.login || "")
         .trim()
         .toLowerCase();
-      const password = String(req.body?.password || "");
-      const found = await query(`SELECT * FROM players WHERE username = $1`, [username]);
-      const player = found.rows[0];
-      if (!player) return res.status(401).json({ error: "Invalid username or password" });
-      const ok = await bcrypt.compare(password, player.password_hash);
-      if (!ok) return res.status(401).json({ error: "Invalid username or password" });
 
-      const token = makeToken();
-      const expires = new Date(Date.now() + SESSION_DAYS * 86400000);
-      await query(
-        `INSERT INTO player_sessions (token, player_id, expires_at) VALUES ($1,$2,$3)`,
-        [token, player.id, expires.toISOString()]
-      );
+      let player = null;
+      if (email && EMAIL_RE.test(email)) {
+        const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
+        player = found.rows[0] || null;
+      } else if (username) {
+        if (EMAIL_RE.test(username)) {
+          const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [username]);
+          player = found.rows[0] || null;
+        } else {
+          const found = await query(`SELECT * FROM players WHERE username = $1`, [username]);
+          player = found.rows[0] || null;
+        }
+      }
+
+      if (!player) return res.status(401).json({ error: "Invalid email or password" });
+      const ok = await bcrypt.compare(password, player.password_hash);
+      if (!ok) return res.status(401).json({ error: "Invalid email or password" });
+
+      if (player.email && !player.email_verified) {
+        // Legacy accounts (created before email verification) have no pending code.
+        if (!player.email_verify_code_hash) {
+          await query(`UPDATE players SET email_verified = true, updated_at = now() WHERE id = $1`, [
+            player.id,
+          ]);
+          player.email_verified = true;
+        } else {
+          const mail = await issueVerification(player, { reason: "resend" });
+          const payload = {
+            ok: false,
+            needsVerification: true,
+            email: player.email,
+            error: "Verify your email before signing in.",
+          };
+          if (mail.previewCode) payload.devCode = mail.previewCode;
+          return res.status(403).json(payload);
+        }
+      }
+
+      const token = await createSession(player.id);
       res.json({ ok: true, token, player: publicPlayer(player) });
     } catch (err) {
       console.error("login:", err.message || err);
@@ -193,17 +382,34 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     try {
       const name = String(req.body?.name ?? req.player.name ?? "").trim().slice(0, 80);
       const phone = String(req.body?.phone ?? req.player.phone ?? "").trim().slice(0, 30);
-      const email = String(req.body?.email ?? req.player.email ?? "").trim().slice(0, 120);
+      const nextEmail = normalizeEmail(req.body?.email ?? req.player.email ?? "");
       const facebookName = String(req.body?.facebookName ?? req.player.facebook_name ?? "")
         .trim()
         .slice(0, 80);
+      const emailChanged = nextEmail && nextEmail !== normalizeEmail(req.player.email);
+      if (emailChanged && !EMAIL_RE.test(nextEmail)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+      }
       const updated = await query(
-        `UPDATE players SET name=$2, phone=$3, email=$4, facebook_name=$5, updated_at=now()
+        `UPDATE players SET name=$2, phone=$3, email=$4, facebook_name=$5,
+           email_verified = CASE WHEN $6 THEN false ELSE email_verified END,
+           updated_at=now()
          WHERE id=$1 RETURNING *`,
-        [req.player.id, name, phone, email, facebookName]
+        [req.player.id, name, phone, nextEmail, facebookName, emailChanged]
       );
-      res.json({ ok: true, player: publicPlayer(updated.rows[0]) });
+      let player = updated.rows[0];
+      let payload = { ok: true, player: publicPlayer(player) };
+      if (emailChanged) {
+        const mail = await issueVerification(player);
+        payload.needsVerification = true;
+        payload.message = "Verify your new email address.";
+        if (mail.previewCode) payload.devCode = mail.previewCode;
+      }
+      res.json(payload);
     } catch (err) {
+      if (String(err.code) === "23505") {
+        return res.status(409).json({ error: "Email already in use" });
+      }
       res.status(500).json({ error: "Could not update profile" });
     }
   });

@@ -63,32 +63,6 @@
     return `<img class="pay-logo" src="assets/payments/${file}" alt="" width="28" height="28" loading="lazy" decoding="async" />`;
   }
 
-  function messengerHref(data) {
-    const raw = String(data?.messenger || "").trim();
-    if (/^https?:\/\//i.test(raw)) return raw;
-    const handle = raw
-      .replace(/^@/, "")
-      .replace(/^https?:\/\/(www\.)?m\.me\//i, "")
-      .replace(/^m\.me\//i, "")
-      .replace(/\/+$/, "");
-    if (handle) return `https://m.me/${encodeURIComponent(handle)}`;
-    const pages = data?.facebook || [];
-    const support =
-      pages.find((f) => /support/i.test(String(f.name || ""))) || pages[0];
-    return support?.url || "#";
-  }
-
-  function bindMessengerLinks(data) {
-    const href = messengerHref(data);
-    ["messenger-fab", "open-support-btn", "hero-support-btn"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.setAttribute("href", href);
-      if (href === "#") el.setAttribute("aria-disabled", "true");
-      else el.removeAttribute("aria-disabled");
-    });
-  }
-
   const TOP_GAME_ORDER = ["juwa", "juwa2", "gamevault"];
 
   function normalizeGameName(name) {
@@ -275,7 +249,6 @@
     if (dockWa) dockWa.href = waUrl;
     if (dockTg) dockTg.href = tgUrl;
 
-    bindMessengerLinks(data);
     renderGames();
   }
 

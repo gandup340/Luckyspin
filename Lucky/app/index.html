@@ -17,15 +17,23 @@
       <p class="login-brand">LUCKY VIPS GAME</p>
       <h1 id="auth-title">Sign in</h1>
       <form id="auth-form" class="app-card">
-        <label>Username <input id="auth-username" autocomplete="username" required /></label>
+        <label>Email <input id="auth-email" type="email" autocomplete="email" required /></label>
         <label>Password <input id="auth-password" type="password" autocomplete="current-password" required /></label>
         <div id="register-extra" hidden>
           <label>Name <input id="auth-name" autocomplete="name" /></label>
+          <label>Phone <input id="auth-phone" type="tel" autocomplete="tel" /></label>
           <label>Referral code (optional) <input id="auth-referral" /></label>
         </div>
         <button type="submit" class="btn btn-fill" id="auth-submit">Sign in</button>
         <p class="app-error" id="auth-error" hidden></p>
         <button type="button" class="linkish" id="auth-toggle">Need an account? Register</button>
+      </form>
+      <form id="verify-form" class="app-card" hidden>
+        <p id="verify-hint">Enter the 6-digit code sent to your email.</p>
+        <label>Code <input id="auth-code" inputmode="numeric" maxlength="6" required /></label>
+        <button type="submit" class="btn btn-fill">Verify email</button>
+        <button type="button" class="btn btn-line" id="auth-resend">Resend code</button>
+        <p class="app-error" id="verify-error" hidden></p>
       </form>
       <a class="app-back" href="/">← Back to site</a>
     </div>
