@@ -78,17 +78,31 @@
     player = nextPlayer || null;
     if (nextToken) {
       token = nextToken;
-      localStorage.setItem(TOKEN_KEY, nextToken);
+      try {
+        localStorage.setItem(TOKEN_KEY, nextToken);
+      } catch {
+        /* private mode / quota */
+      }
     }
     if (player) saveJson(PLAYER_KEY, player);
-    else localStorage.removeItem(PLAYER_KEY);
+    else {
+      try {
+        localStorage.removeItem(PLAYER_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   function clearAuth() {
     token = "";
     player = null;
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(PLAYER_KEY);
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(PLAYER_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 
   function loadChatSession() {
@@ -114,6 +128,22 @@
     }
     el.hidden = false;
     el.textContent = text;
+  }
+
+  async function withBusyForm(form, run) {
+    const btn = form?.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+    }
+    try {
+      return await run();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
+    }
   }
 
   function bubbleClass(from) {
@@ -304,10 +334,15 @@
   async function api(path, body) {
     const res = await fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body || {}),
     });
     const data = await res.json().catch(() => ({}));
+    if (data?.token) cachePlayer(data.player || player, data.token);
     return { res, data };
   }
 
@@ -467,20 +502,26 @@
   async function restorePlayerSession() {
     const cached = loadJson(PLAYER_KEY);
     if (cached) player = cached;
-    if (!token) return false;
+    token = localStorage.getItem(TOKEN_KEY) || token || "";
+    const hasCachedSession = Boolean((token || player?.email) && player?.email);
     try {
       const res = await fetch("/api/player/me", {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) {
+      if (res.status === 401) {
         clearAuth();
         return false;
       }
+      if (!res.ok) {
+        // Keep local session on temporary server/network errors.
+        return hasCachedSession;
+      }
       const data = await res.json();
-      cachePlayer(data.player, token);
-      return true;
+      cachePlayer(data.player, data.token || token);
+      return Boolean(player?.email);
     } catch {
-      return Boolean(player);
+      return hasCachedSession;
     }
   }
 
@@ -534,103 +575,113 @@
 
   forgotForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = String(document.getElementById("chat-forgot-email")?.value || "")
-      .trim()
-      .toLowerCase();
-    const errEl = document.getElementById("chat-forgot-error");
-    setError(errEl, "");
-    const { res, data } = await api("/api/player/forgot-password", { email });
-    if (!res.ok) {
-      setError(errEl, data.error || "Could not send reset code");
-      return;
-    }
-    pendingEmail = email;
-    const hintEl = document.getElementById("chat-reset-hint");
-    if (hintEl) {
-      hintEl.textContent = data.message || `Enter the code sent to ${email}.`;
-      if (data.devCode) hintEl.textContent += ` Dev code: ${data.devCode}`;
-    }
-    showAuthMode("reset");
-    document.getElementById("chat-reset-code")?.focus();
+    await withBusyForm(forgotForm, async () => {
+      const email = String(document.getElementById("chat-forgot-email")?.value || "")
+        .trim()
+        .toLowerCase();
+      const errEl = document.getElementById("chat-forgot-error");
+      setError(errEl, "");
+      const { res, data } = await api("/api/player/forgot-password", { email });
+      if (!res.ok) {
+        setError(errEl, data.error || "Could not send reset code");
+        return;
+      }
+      pendingEmail = email;
+      const hintEl = document.getElementById("chat-reset-hint");
+      if (hintEl) {
+        hintEl.textContent = data.message || `Enter the code sent to ${email}.`;
+        if (data.devCode) hintEl.textContent += ` Dev code: ${data.devCode}`;
+      }
+      showAuthMode("reset");
+      document.getElementById("chat-reset-code")?.focus();
+    });
   });
 
   resetForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const code = String(document.getElementById("chat-reset-code")?.value || "").trim();
-    const password = String(document.getElementById("chat-reset-password")?.value || "");
-    const errEl = document.getElementById("chat-reset-error");
-    setError(errEl, "");
-    const { res, data } = await api("/api/player/reset-password", {
-      email: pendingEmail,
-      code,
-      password,
+    await withBusyForm(resetForm, async () => {
+      const code = String(document.getElementById("chat-reset-code")?.value || "").trim();
+      const password = String(document.getElementById("chat-reset-password")?.value || "");
+      const errEl = document.getElementById("chat-reset-error");
+      setError(errEl, "");
+      const { res, data } = await api("/api/player/reset-password", {
+        email: pendingEmail,
+        code,
+        password,
+      });
+      if (!res.ok || !data.token) {
+        setError(errEl, data.error || "Could not reset password");
+        return;
+      }
+      cachePlayer(data.player, data.token);
+      startChatWithPlayer(data.player);
     });
-    if (!res.ok || !data.token) {
-      setError(errEl, data.error || "Could not reset password");
-      return;
-    }
-    cachePlayer(data.player, data.token);
-    startChatWithPlayer(data.player);
   });
 
   signinForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = String(document.getElementById("chat-login-email")?.value || "")
-      .trim()
-      .toLowerCase();
-    const password = String(document.getElementById("chat-login-password")?.value || "");
-    const errEl = document.getElementById("chat-signin-error");
-    setError(errEl, "");
-    const { res, data } = await api("/api/player/login", { email, password });
-    if (data.needsVerification) {
-      showVerify(data.email || email, data.error, data.devCode);
-      return;
-    }
-    if (!res.ok || !data.token) {
-      setError(errEl, data.error || "Sign in failed");
-      return;
-    }
-    cachePlayer(data.player, data.token);
-    startChatWithPlayer(data.player);
+    await withBusyForm(signinForm, async () => {
+      const email = String(document.getElementById("chat-login-email")?.value || "")
+        .trim()
+        .toLowerCase();
+      const password = String(document.getElementById("chat-login-password")?.value || "");
+      const errEl = document.getElementById("chat-signin-error");
+      setError(errEl, "");
+      const { res, data } = await api("/api/player/login", { email, password });
+      if (data.needsVerification) {
+        showVerify(data.email || email, data.error, data.devCode);
+        return;
+      }
+      if (!res.ok || !data.token) {
+        setError(errEl, data.error || "Sign in failed");
+        return;
+      }
+      cachePlayer(data.player, data.token);
+      startChatWithPlayer(data.player);
+    });
   });
 
   signupForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = String(document.getElementById("chat-reg-email")?.value || "")
-      .trim()
-      .toLowerCase();
-    const password = String(document.getElementById("chat-reg-password")?.value || "");
-    const name = String(document.getElementById("chat-reg-name")?.value || "").trim();
-    const phone = String(document.getElementById("chat-reg-phone")?.value || "").trim();
-    const errEl = document.getElementById("chat-signup-error");
-    setError(errEl, "");
-    if (phone.replace(/\D/g, "").length < 7) {
-      setError(errEl, "Enter a valid phone number");
-      return;
-    }
-    const { res, data } = await api("/api/player/register", { email, password, name, phone });
-    if (!res.ok) {
-      setError(errEl, data.error || "Sign up failed");
-      return;
-    }
-    showVerify(email, data.message, data.devCode);
+    await withBusyForm(signupForm, async () => {
+      const email = String(document.getElementById("chat-reg-email")?.value || "")
+        .trim()
+        .toLowerCase();
+      const password = String(document.getElementById("chat-reg-password")?.value || "");
+      const name = String(document.getElementById("chat-reg-name")?.value || "").trim();
+      const phone = String(document.getElementById("chat-reg-phone")?.value || "").trim();
+      const errEl = document.getElementById("chat-signup-error");
+      setError(errEl, "");
+      if (phone.replace(/\D/g, "").length < 7) {
+        setError(errEl, "Enter a valid phone number");
+        return;
+      }
+      const { res, data } = await api("/api/player/register", { email, password, name, phone });
+      if (!res.ok) {
+        setError(errEl, data.error || "Sign up failed");
+        return;
+      }
+      showVerify(email, data.message, data.devCode);
+    });
   });
 
   verifyForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const code = String(document.getElementById("chat-verify-code")?.value || "").trim();
-    const errEl = document.getElementById("chat-verify-error");
-    setError(errEl, "");
-    const { res, data } = await api("/api/player/verify-email", {
-      email: pendingEmail,
-      code,
+    await withBusyForm(verifyForm, async () => {
+      const code = String(document.getElementById("chat-verify-code")?.value || "").trim();
+      const errEl = document.getElementById("chat-verify-error");
+      setError(errEl, "");
+      const { res, data } = await api("/api/player/verify-email", {
+        email: pendingEmail,
+        code,
+      });
+      if (!res.ok || !data.token) {
+        setError(errEl, data.error || "Verification failed");
+        return;
+      }
+      cachePlayer(data.player, data.token);
+      startChatWithPlayer(data.player);
     });
-    if (!res.ok || !data.token) {
-      setError(errEl, data.error || "Verification failed");
-      return;
-    }
-    cachePlayer(data.player, data.token);
-    startChatWithPlayer(data.player);
   });
 
   document.getElementById("chat-resend-btn")?.addEventListener("click", async () => {

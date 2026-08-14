@@ -1,4 +1,31 @@
 (() => {
+  // Make taps feel instant on mobile (helps iOS :active + press feedback).
+  document.addEventListener("touchstart", () => {}, { passive: true });
+
+  const PRESS_SEL =
+    "button, .btn, .chat-attach-btn, .chat-auth-tab, .chat-quick button, .player-nav-btn, .player-logout, .player-burger, .welcome-install, .welcome-forgot, .nav-text-btn";
+
+  function clearPressing() {
+    document.querySelectorAll(".is-pressing").forEach((el) => el.classList.remove("is-pressing"));
+  }
+
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const el = e.target.closest(PRESS_SEL);
+      if (!el || el.disabled || el.getAttribute("aria-disabled") === "true") return;
+      clearPressing();
+      el.classList.add("is-pressing");
+    },
+    { passive: true }
+  );
+
+  document.addEventListener("pointerup", clearPressing, { passive: true });
+  document.addEventListener("pointercancel", clearPressing, { passive: true });
+  document.addEventListener("pointerleave", clearPressing, { passive: true });
+  window.addEventListener("blur", clearPressing);
+
   const qs = (id) => document.getElementById(id);
 
   const panel = qs("pwa-panel");
