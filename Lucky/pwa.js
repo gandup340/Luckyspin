@@ -3,6 +3,7 @@
 
   const panel = qs("pwa-panel");
   const installBtn = qs("pwa-install-btn");
+  const heroInstallBtn = qs("hero-install-btn");
   const notifyBtn = qs("pwa-notify-btn");
   const statusEl = qs("pwa-status");
   const helpEl = qs("pwa-help");
@@ -49,8 +50,8 @@
   }
 
   function showInstallButton(show) {
-    if (!installBtn) return;
-    installBtn.hidden = !show;
+    if (installBtn) installBtn.hidden = !show;
+    if (heroInstallBtn) heroInstallBtn.hidden = !show;
   }
 
   function showNotifyButton(show) {
@@ -179,9 +180,13 @@
     }
     if (isIos()) {
       setHelp("On iPhone/iPad: tap Share → Add to Home Screen to install this app.");
+      setStatus("Add to Home Screen from the Share menu.");
+      document.getElementById("pwa-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
     setHelp("Use your browser menu → Install app / Add to Home screen.");
+    setStatus("Install from your browser menu if the prompt doesn’t appear yet.");
+    document.getElementById("pwa-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function setupInstallFlow() {
@@ -190,6 +195,9 @@
       setStatus("Running as installed app.");
       return;
     }
+
+    // Show install on the starting page immediately; native prompt may arrive later.
+    showInstallButton(true);
 
     window.addEventListener("beforeinstallprompt", (event) => {
       event.preventDefault();
@@ -203,22 +211,19 @@
       showInstallButton(false);
       setStatus("App installed.");
     });
-
-    if (isIos()) {
-      showInstallButton(true);
-    }
   }
 
   async function init() {
-    if (!panel) return;
-    panel.hidden = false;
+    if (panel) panel.hidden = false;
     setupInstallFlow();
     await registerServiceWorker();
     await refreshNotifyUi();
 
-    installBtn?.addEventListener("click", () => {
+    const onInstallClick = () => {
       promptInstall().catch(() => setHelp("Use your browser menu to install this app."));
-    });
+    };
+    installBtn?.addEventListener("click", onInstallClick);
+    heroInstallBtn?.addEventListener("click", onInstallClick);
     notifyBtn?.addEventListener("click", () => {
       enableNotifications().catch(() => setStatus("Could not enable notifications.", true));
     });
