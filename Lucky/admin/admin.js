@@ -689,19 +689,57 @@
     if (!body) return;
     try {
       const data = await api("/api/admin/players");
-      body.innerHTML = (data.players || [])
+      const players = data.players || [];
+      if (!players.length) {
+        body.innerHTML = `<tr class="table-empty"><td colspan="8">No registered players yet.</td></tr>`;
+        return;
+      }
+      body.innerHTML = players
         .map(
-          (p) => `<tr>
-            <td>${esc(p.username)}</td>
-            <td>${esc(p.name || "")}</td>
-            <td>${money(p.balanceCents)}</td>
-            <td>${esc(p.points)}</td>
-            <td><code>${esc(p.referralCode || "")}</code></td>
+          (p) => `<tr data-player-id="${esc(p.id)}">
+            <td data-label="Username"><code>${esc(p.username)}</code></td>
+            <td data-label="Name">${esc(p.name || "")}</td>
+            <td data-label="Email">${esc(p.email || "")}</td>
+            <td data-label="Phone">${esc(p.phone || "")}</td>
+            <td data-label="Balance">${money(p.balanceCents)}</td>
+            <td data-label="Points">${esc(p.points)}</td>
+            <td data-label="New password">
+              <input type="password" data-field="player-password" placeholder="Min 6 chars" minlength="6" autocomplete="new-password" />
+            </td>
+            <td data-label="Actions" class="user-actions">
+              <button type="button" class="btn-mini" data-set-player-pass="${esc(p.id)}">Set password</button>
+            </td>
           </tr>`
         )
         .join("");
-    } catch {
-      body.innerHTML = "";
+
+      body.querySelectorAll("[data-set-player-pass]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const row = btn.closest("tr");
+          const input = row?.querySelector('[data-field="player-password"]');
+          const password = String(input?.value || "").trim();
+          if (password.length < 6) {
+            setStatus("players-status", "Password must be at least 6 characters", true);
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const result = await api(`/api/admin/players/${btn.dataset.setPlayerPass}/password`, {
+              method: "PUT",
+              body: JSON.stringify({ password }),
+            });
+            if (input) input.value = "";
+            setStatus("players-status", result.message || "Password updated");
+          } catch (err) {
+            setStatus("players-status", err.message || "Could not update password", true);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      body.innerHTML = `<tr class="table-empty"><td colspan="8">${esc(err.message || "Could not load players")}</td></tr>`;
+      setStatus("players-status", err.message || "Could not load players", true);
     }
   }
 
@@ -1157,8 +1195,17 @@
     callBtn: threadCallBtn,
     hangBtn: threadHangBtn,
     setStatus: (t) => {
-      if (threadName && t) threadContact && (threadContact.hidden = false);
-      console.info("[call]", t);
+      if (!t) return;
+      if (threadContact) {
+        threadContact.hidden = false;
+        let el = document.getElementById("thread-call-status");
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "thread-call-status";
+          threadContact.appendChild(el);
+        }
+        el.textContent = t;
+      }
     },
     callerName: () => "Support",
     onIncoming: (msg, actions) => {

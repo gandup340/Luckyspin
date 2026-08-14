@@ -836,10 +836,43 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
   app.get("/api/admin/players", auth, requireAdmin, requireDb, async (_req, res) => {
     const rows = await query(
       `SELECT id, username, name, phone, email, facebook_name AS "facebookName", referral_code AS "referralCode",
-              points, balance_cents AS "balanceCents", vip_tier AS "vipTier", created_at AS "createdAt"
-       FROM players ORDER BY created_at DESC LIMIT 200`
+              points, balance_cents AS "balanceCents", vip_tier AS "vipTier",
+              email_verified AS "emailVerified", created_at AS "createdAt"
+       FROM players ORDER BY created_at DESC LIMIT 500`
     );
     res.json({ players: rows.rows });
+  });
+
+  // Admin can set any player's password without knowing the old one.
+  app.put("/api/admin/players/:id/password", auth, requireAdmin, requireDb, async (req, res) => {
+    try {
+      const id = String(req.params.id || "").trim();
+      const password = String(req.body?.password || "").trim();
+      if (!id) return res.status(400).json({ error: "Player id required" });
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      const found = await query(`SELECT id, username, email FROM players WHERE id = $1`, [id]);
+      const player = found.rows[0];
+      if (!player) return res.status(404).json({ error: "Player not found" });
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      await query(`UPDATE players SET password_hash = $2, updated_at = now() WHERE id = $1`, [
+        player.id,
+        passwordHash,
+      ]);
+      // Force re-login on other devices after admin reset.
+      await query(`DELETE FROM player_sessions WHERE player_id = $1`, [player.id]);
+
+      res.json({
+        ok: true,
+        message: `Password updated for ${player.email || player.username}.`,
+        player: { id: player.id, username: player.username, email: player.email },
+      });
+    } catch (err) {
+      console.error("admin set player password:", err.message || err);
+      res.status(500).json({ error: "Could not update player password" });
+    }
   });
 }
 

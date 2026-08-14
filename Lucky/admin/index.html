@@ -490,19 +490,23 @@
           <header class="panel-head row">
             <div>
               <h2>Players</h2>
-              <p>Registered player accounts</p>
+              <p>Registered accounts — set a new password anytime (no old password needed).</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-players-btn">Refresh</button>
           </header>
+          <span class="status" id="players-status"></span>
           <div class="table-wrap">
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Username</th>
                   <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
                   <th>Balance</th>
                   <th>Points</th>
-                  <th>Referral</th>
+                  <th>New password</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="players-body"></tbody>

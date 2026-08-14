@@ -219,11 +219,15 @@
     const saved = loadChatSession();
     const phone = String(p.phone || "").trim();
     const phoneOk = phone.replace(/\D/g, "").length >= 7;
+    const email = String(p.email || saved?.email || "")
+      .trim()
+      .toLowerCase();
     return {
+      // Prefer saved thread id; server also remaps by email if missing/stale.
       conversationId: saved?.conversationId || conversationId || "",
-      name: String(p.name || p.username || "Player").trim().slice(0, 60),
-      phone: phoneOk ? phone : "0000000000",
-      email: String(p.email || "").trim().toLowerCase(),
+      name: String(p.name || p.username || saved?.name || "Player").trim().slice(0, 60),
+      phone: phoneOk ? phone : saved?.phone || "0000000000",
+      email,
     };
   }
 

@@ -133,7 +133,7 @@
     try {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(PLAYER_KEY);
-      localStorage.removeItem(CHAT_KEY);
+      // Keep chat session id so the same device can reopen the same server thread.
     } catch {
       /* ignore */
     }

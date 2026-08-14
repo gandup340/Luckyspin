@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS referral_spins (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS chat_store (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_deposits_player ON deposits(player_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_player ON withdrawals(player_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_player ON player_sessions(player_id);

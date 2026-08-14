@@ -12,7 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const webpush = require("web-push");
 const { mountPlayerApi } = require("./player-api");
-const { dbEnabled } = require("./db");
+const { dbEnabled, query } = require("./db");
 const { emailConfigured, smtpSettings } = require("./mail");
 
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -127,6 +127,10 @@ const MAX_SPIN_PRIZES = 13;
 const tokens = new Map(); // token -> { expiresAt, userId, username }
 const sockets = new Set();
 const activeCalls = new Map(); // conversationId -> { customerWs, adminWs }
+const MAX_CHAT_MESSAGES = 500;
+let chatsCache = null;
+let chatDbReady = false;
+let chatDbPersistTimer = null;
 
 function readJson(file, fallback) {
   try {
@@ -139,6 +143,89 @@ function readJson(file, fallback) {
 function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function normalizeChatData(raw) {
+  const data = raw && typeof raw === "object" ? raw : { conversations: [] };
+  if (!Array.isArray(data.conversations)) data.conversations = [];
+  return data;
+}
+
+function trimConversationMessages(convo) {
+  if (!convo || !Array.isArray(convo.messages)) return;
+  if (convo.messages.length > MAX_CHAT_MESSAGES) {
+    convo.messages = convo.messages.slice(-MAX_CHAT_MESSAGES);
+  }
+}
+
+async function ensureChatStoreSchema() {
+  if (!dbEnabled()) return false;
+  await query(`
+    CREATE TABLE IF NOT EXISTS chat_store (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  chatDbReady = true;
+  return true;
+}
+
+async function loadChatsFromDb() {
+  if (!dbEnabled()) return null;
+  try {
+    await ensureChatStoreSchema();
+    const res = await query(`SELECT data FROM chat_store WHERE id = 'default' LIMIT 1`);
+    const row = res.rows[0];
+    if (!row?.data) return null;
+    return normalizeChatData(row.data);
+  } catch (err) {
+    console.warn("chat db load:", err?.message || err);
+    return null;
+  }
+}
+
+async function persistChatsToDb(data) {
+  if (!dbEnabled()) return;
+  try {
+    if (!chatDbReady) await ensureChatStoreSchema();
+    await query(
+      `INSERT INTO chat_store (id, data, updated_at)
+       VALUES ('default', $1::jsonb, now())
+       ON CONFLICT (id) DO UPDATE
+       SET data = EXCLUDED.data, updated_at = now()`,
+      [JSON.stringify(normalizeChatData(data))]
+    );
+  } catch (err) {
+    console.warn("chat db save:", err?.message || err);
+  }
+}
+
+function scheduleChatDbPersist(data) {
+  if (!dbEnabled()) return;
+  clearTimeout(chatDbPersistTimer);
+  chatDbPersistTimer = setTimeout(() => {
+    persistChatsToDb(data).catch(() => {});
+  }, 250);
+}
+
+function findConversationByContact({ email, phone }, conversations = []) {
+  const mail = normalizeEmail(email);
+  const digits = phoneDigits(phone);
+  const matches = (conversations || []).filter((c) => {
+    if (!c || c.channel === "facebook") return false;
+    if (mail && normalizeEmail(c.email) === mail) return true;
+    if (
+      digits.length >= 7 &&
+      digits !== "0000000000" &&
+      phoneDigits(c.phone) === digits
+    ) {
+      return true;
+    }
+    return false;
+  });
+  matches.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  return matches[0] || null;
 }
 
 function isBcryptHash(hash) {
@@ -294,11 +381,17 @@ function enabledSpinPrizes(cfg) {
 }
 
 function getChats() {
-  return readJson(CHATS_PATH, { conversations: [] });
+  if (chatsCache) return chatsCache;
+  chatsCache = normalizeChatData(readJson(CHATS_PATH, { conversations: [] }));
+  return chatsCache;
 }
 
 function saveChats(data) {
-  writeJson(CHATS_PATH, data);
+  const next = normalizeChatData(data);
+  for (const convo of next.conversations) trimConversationMessages(convo);
+  chatsCache = next;
+  writeJson(CHATS_PATH, next);
+  scheduleChatDbPersist(next);
 }
 
 function getCustomers() {
@@ -914,7 +1007,7 @@ app.use(
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
   if (IS_PROD) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
   next();
 });
@@ -1839,30 +1932,33 @@ wss.on("connection", (ws, req) => {
       }
 
       let id = msg.conversationId;
+      let existing = null;
+
       if (id != null && id !== "") {
         if (!isValidUuid(id)) {
           ws.send(JSON.stringify({ type: "error", error: "Invalid chat session." }));
           return;
         }
-        const existing = getChats().conversations.find((c) => c.id === id);
+        existing = getChats().conversations.find((c) => c.id === id) || null;
         if (existing) {
           const samePhone =
             String(existing.phone || "").replace(/\D/g, "") === phoneDigitsValue;
           const sameEmail = normalizeEmail(existing.email) === email;
-          if (!samePhone || !sameEmail) {
-            ws.send(
-              JSON.stringify({
-                type: "error",
-                error: "Chat session does not match your contact details.",
-              })
-            );
-            return;
+          // Allow resume if either contact field still matches (profile edits happen).
+          if (!samePhone && !sameEmail) {
+            existing = null;
+            id = "";
           }
         } else {
-          id = crypto.randomUUID();
+          id = "";
         }
-      } else {
-        id = crypto.randomUUID();
+      }
+
+      // Restore prior on-site thread for this player (email/phone) so history survives login.
+      if (!existing) {
+        existing = findConversationByContact({ email, phone }, getChats().conversations);
+        if (existing) id = existing.id;
+        else id = crypto.randomUUID();
       }
 
       const customer = upsertCustomer({ name, phone, email });
@@ -1877,7 +1973,7 @@ wss.on("connection", (ws, req) => {
           role: "customer",
           conversationId: id,
           profile: { name: convo.name, phone: convo.phone, email: convo.email },
-          messages: convo.messages,
+          messages: Array.isArray(convo.messages) ? convo.messages.slice(-MAX_CHAT_MESSAGES) : [],
         })
       );
       broadcast(
@@ -2137,6 +2233,37 @@ if (!fs.existsSync(CUSTOMERS_PATH)) {
   writeJson(CUSTOMERS_PATH, { customers: [] });
 }
 backfillCustomersFromChats();
+
+async function bootChatPersistence() {
+  if (!dbEnabled()) {
+    chatsCache = normalizeChatData(readJson(CHATS_PATH, { conversations: [] }));
+    return { source: "file", count: chatsCache.conversations.length };
+  }
+  const fromDb = await loadChatsFromDb();
+  const fromFile = normalizeChatData(readJson(CHATS_PATH, { conversations: [] }));
+  if (fromDb) {
+    const dbCount = fromDb.conversations.length;
+    const fileCount = fromFile.conversations.length;
+    // Prefer the richer copy so a redeploy with empty disk doesn't wipe Neon history,
+    // and a fresh Neon empty table doesn't wipe a healthy local file.
+    chatsCache = dbCount >= fileCount ? fromDb : fromFile;
+    writeJson(CHATS_PATH, chatsCache);
+    if (dbCount < fileCount) await persistChatsToDb(chatsCache);
+    return { source: dbCount >= fileCount ? "neon" : "file+neon-backfill", count: chatsCache.conversations.length };
+  }
+  chatsCache = fromFile;
+  await persistChatsToDb(chatsCache);
+  return { source: "file->neon", count: chatsCache.conversations.length };
+}
+
+bootChatPersistence()
+  .then((info) => {
+    console.log(`Chat store:        ${info.count} conversation(s) from ${info.source}`);
+  })
+  .catch((err) => {
+    console.warn("Chat store boot failed:", err?.message || err);
+    chatsCache = normalizeChatData(readJson(CHATS_PATH, { conversations: [] }));
+  });
 
 server.listen(PORT, HOST, () => {
   const displayHost = HOST === "0.0.0.0" ? "localhost" : HOST;
