@@ -63,6 +63,7 @@
           <button type="button" class="nav-btn" data-tab="spin" data-title="Spin game">Spin game</button>
           <button type="button" class="nav-btn" data-tab="customers" data-title="Customers">Customers</button>
           <button type="button" class="nav-btn" data-tab="users" data-title="Users" data-admin-only>Users</button>
+          <button type="button" class="nav-btn" data-tab="push" data-title="Push" data-admin-only>Push</button>
         </nav>
         <div class="side-foot">
           <p class="signed-in" id="signed-in"></p>
@@ -395,6 +396,36 @@
               <tbody id="users-body"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel" id="tab-push">
+          <header class="panel-head">
+            <h2>Push notifications</h2>
+            <p>Send a notification to phones that enabled alerts on the website.</p>
+            <p id="push-meta" class="status" style="margin-top:0.5rem"></p>
+          </header>
+          <form class="contact-form" id="push-form">
+            <label>
+              Title
+              <input type="text" id="push-title" maxlength="80" value="LUCKY VIPS GAME" required />
+            </label>
+            <label>
+              Message
+              <input type="text" id="push-body" maxlength="180" placeholder="New update for players" required />
+            </label>
+            <label>
+              Open URL (optional)
+              <input type="text" id="push-url" placeholder="/" value="/" />
+            </label>
+            <label>
+              Icon URL (optional)
+              <input type="text" id="push-icon" value="/assets/icons/icon-192.png" />
+            </label>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold">Send to all devices</button>
+              <span class="status" id="push-status"></span>
+            </div>
+          </form>
         </section>
       </main>
     </div>
