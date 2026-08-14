@@ -9,6 +9,13 @@
       content="LUCKY VIPS GAME official portal. Verified player game links, Facebook Messenger support, and Facebook pages."
     />
     <meta name="theme-color" content="#141618" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Lucky VIPS" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -108,6 +115,22 @@
       </section>
     </main>
 
+    <section class="pwa-panel" id="pwa-panel" hidden aria-label="Install app and notifications">
+      <div class="pwa-panel-inner">
+        <div class="pwa-copy">
+          <p class="eyebrow">Phone app</p>
+          <h2>Install & alerts</h2>
+          <p class="pwa-lead">Add LUCKY VIPS GAME to your home screen and get updates on your phone.</p>
+        </div>
+        <div class="pwa-actions">
+          <button type="button" class="btn btn-fill" id="pwa-install-btn" hidden>Install App</button>
+          <button type="button" class="btn btn-line" id="pwa-notify-btn" hidden>Enable Notifications</button>
+        </div>
+        <p class="pwa-status" id="pwa-status" aria-live="polite"></p>
+        <p class="pwa-help" id="pwa-help" hidden></p>
+      </div>
+    </section>
+
     <footer class="footer">
       <div class="footer-row">
         <p class="footer-brand">LUCKY VIPS GAME</p>
@@ -139,5 +162,6 @@
     </div>
 
     <script src="script.js"></script>
+    <script src="pwa.js"></script>
   </body>
 </html>

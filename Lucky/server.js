@@ -10,6 +10,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
+const webpush = require("web-push");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const PORT = Number(process.env.PORT) || 3000;
@@ -20,6 +21,7 @@ const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const CHATS_PATH = path.join(DATA_DIR, "chats.json");
 const CUSTOMERS_PATH = path.join(DATA_DIR, "customers.json");
 const SPINS_PATH = path.join(DATA_DIR, "spins.json");
+const PUSH_SUBS_PATH = path.join(DATA_DIR, "push-subscriptions.json");
 const UPLOADS_CHAT_DIR = path.join(ROOT, "uploads", "chat");
 const BCRYPT_ROUNDS = 12;
 const MIN_PASSWORD_LENGTH = IS_PROD ? 10 : 6;
@@ -36,6 +38,10 @@ const FACEBOOK_VERIFY_TOKEN = String(
 const FACEBOOK_APP_SECRET = String(process.env.FACEBOOK_APP_SECRET || "").trim();
 const FACEBOOK_GRAPH_VERSION = String(process.env.FACEBOOK_GRAPH_VERSION || "v21.0").trim();
 const FACEBOOK_ENABLED = Boolean(FACEBOOK_PAGE_ACCESS_TOKEN && FACEBOOK_VERIFY_TOKEN);
+const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@luckyvipsgame.com").trim();
+const PUSH_ENABLED = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 const FACEBOOK_SUBSCRIBED_FIELDS = [
   "messages",
   "messaging_postbacks",
@@ -264,6 +270,85 @@ function getCustomers() {
 
 function saveCustomers(data) {
   writeJson(CUSTOMERS_PATH, data);
+}
+
+function getPushSubscriptions() {
+  return readJson(PUSH_SUBS_PATH, { subscriptions: [] });
+}
+
+function savePushSubscriptions(data) {
+  writeJson(PUSH_SUBS_PATH, data);
+}
+
+function normalizePushSubscription(input) {
+  const endpoint = String(input?.endpoint || "").trim();
+  const p256dh = String(input?.keys?.p256dh || "").trim();
+  const auth = String(input?.keys?.auth || "").trim();
+  if (!endpoint || !/^https?:\/\//i.test(endpoint) || !p256dh || !auth) return null;
+  return {
+    endpoint,
+    keys: { p256dh, auth },
+    expirationTime: input.expirationTime ?? null,
+  };
+}
+
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+async function sendPushToAll({ title, body, icon, url, data, tag }) {
+  if (!PUSH_ENABLED) {
+    return { ok: false, error: "Push notifications are not configured (missing VAPID keys)." };
+  }
+  const store = getPushSubscriptions();
+  const list = Array.isArray(store.subscriptions) ? store.subscriptions : [];
+  if (!list.length) return { ok: true, sent: 0, failed: 0, removed: 0 };
+
+  const payload = JSON.stringify({
+    title: String(title || "LUCKY VIPS GAME").slice(0, 80),
+    body: String(body || "").slice(0, 180),
+    icon: String(icon || "/assets/icons/icon-192.png"),
+    badge: "/assets/icons/icon-192.png",
+    url: String(url || "/"),
+    tag: String(tag || "lucky-vips"),
+    data: data && typeof data === "object" ? data : {},
+  });
+
+  let sent = 0;
+  let failed = 0;
+  const keep = [];
+
+  await Promise.all(
+    list.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+            expirationTime: sub.expirationTime ?? null,
+          },
+          payload
+        );
+        sent += 1;
+        keep.push(sub);
+      } catch (err) {
+        const status = Number(err?.statusCode || 0);
+        if (status === 404 || status === 410) {
+          failed += 1;
+          return;
+        }
+        failed += 1;
+        keep.push(sub);
+      }
+    })
+  );
+
+  const removed = list.length - keep.length;
+  if (removed > 0) {
+    store.subscriptions = keep;
+    savePushSubscriptions(store);
+  }
+  return { ok: true, sent, failed, removed, total: list.length };
 }
 
 function normalizePhone(phone) {
@@ -565,21 +650,44 @@ async function subscribeFacebookPage() {
     return facebookRuntime.pageSubscribe;
   }
   try {
-    const url = facebookGraphUrl("/me/subscribed_apps", {
+    const page = await fetchFacebookPageIdentity();
+    const pageId = page?.ok && page.id ? page.id : "me";
+    const url = facebookGraphUrl(`/${encodeURIComponent(pageId)}/subscribed_apps`, {
       access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
       subscribed_fields: FACEBOOK_SUBSCRIBED_FIELDS.join(","),
     });
     const res = await fetch(url, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) {
-      facebookRuntime.pageSubscribe = {
-        ok: false,
-        error: data?.error?.message || `subscribed_apps failed (${res.status})`,
-      };
+      // Fall back to reading current subscriptions (UI may already be subscribed).
+      const listUrl = facebookGraphUrl(`/${encodeURIComponent(pageId)}/subscribed_apps`, {
+        access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+      });
+      const listRes = await fetch(listUrl);
+      const listData = await listRes.json().catch(() => ({}));
+      const apps = Array.isArray(listData?.data) ? listData.data : [];
+      if (listRes.ok && apps.length) {
+        facebookRuntime.pageSubscribe = {
+          ok: true,
+          via: "existing",
+          fields: FACEBOOK_SUBSCRIBED_FIELDS,
+          apps: apps.map((a) => ({ id: a.id, name: a.name })),
+          at: Date.now(),
+          warning: data?.error?.message || "Could not re-subscribe; using existing page app link",
+        };
+      } else {
+        facebookRuntime.pageSubscribe = {
+          ok: false,
+          error: data?.error?.message || `subscribed_apps failed (${res.status})`,
+          hint: "In Meta: Messenger → Webhooks → Page → subscribe messages for Lucky Vips Game. Token needs pages_messaging + pages_manage_metadata.",
+        };
+      }
     } else {
       facebookRuntime.pageSubscribe = {
         ok: true,
+        via: "api",
         fields: FACEBOOK_SUBSCRIBED_FIELDS,
+        pageId,
         at: Date.now(),
       };
     }
@@ -809,6 +917,46 @@ app.get("/api/facebook/status", async (_req, res) => {
     lastIngestAt: facebookRuntime.lastIngestAt || null,
     lastIngestText: facebookRuntime.lastIngestText || "",
   });
+});
+
+app.get("/api/push/vapid-public-key", (_req, res) => {
+  if (!PUSH_ENABLED) {
+    return res.status(503).json({ error: "Push notifications are not configured.", configured: false });
+  }
+  res.json({ configured: true, publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", (req, res) => {
+  if (!PUSH_ENABLED) {
+    return res.status(503).json({ error: "Push notifications are not configured." });
+  }
+  const normalized = normalizePushSubscription(req.body);
+  if (!normalized) return res.status(400).json({ error: "Invalid push subscription." });
+
+  const store = getPushSubscriptions();
+  if (!Array.isArray(store.subscriptions)) store.subscriptions = [];
+  const now = Date.now();
+  const idx = store.subscriptions.findIndex((s) => s.endpoint === normalized.endpoint);
+  const entry = {
+    ...normalized,
+    userAgent: String(req.get("user-agent") || "").slice(0, 300),
+    createdAt: idx >= 0 ? store.subscriptions[idx].createdAt || now : now,
+    updatedAt: now,
+  };
+  if (idx >= 0) store.subscriptions[idx] = entry;
+  else store.subscriptions.push(entry);
+  savePushSubscriptions(store);
+  res.json({ ok: true });
+});
+
+app.delete("/api/push/subscribe", (req, res) => {
+  const endpoint = String(req.body?.endpoint || "").trim();
+  if (!endpoint) return res.status(400).json({ error: "endpoint required" });
+  const store = getPushSubscriptions();
+  const before = (store.subscriptions || []).length;
+  store.subscriptions = (store.subscriptions || []).filter((s) => s.endpoint !== endpoint);
+  savePushSubscriptions(store);
+  res.json({ ok: true, removed: before - store.subscriptions.length });
 });
 
 app.use("/api/", apiLimiter);
@@ -1155,7 +1303,36 @@ app.get("/api/admin/config", auth, requireAdmin, (_req, res) => {
     games: cfg.games || [],
     paymentsAdmin: cfg.payments || [],
     facebookMessengerConfigured: FACEBOOK_ENABLED,
+    pushConfigured: PUSH_ENABLED,
+    pushSubscriberCount: (getPushSubscriptions().subscriptions || []).length,
   });
+});
+
+app.get("/api/admin/push", auth, requireAdmin, (_req, res) => {
+  const store = getPushSubscriptions();
+  res.json({
+    configured: PUSH_ENABLED,
+    count: (store.subscriptions || []).length,
+  });
+});
+
+app.post("/api/admin/push/send", auth, requireAdmin, async (req, res) => {
+  const title = String(req.body?.title || "").trim();
+  const body = String(req.body?.body || "").trim();
+  const icon = String(req.body?.icon || "/assets/icons/icon-192.png").trim();
+  const url = String(req.body?.url || "/").trim() || "/";
+  const tag = String(req.body?.tag || "lucky-vips").trim();
+  const data = req.body?.data && typeof req.body.data === "object" ? req.body.data : {};
+  if (!title || !body) {
+    return res.status(400).json({ error: "title and body are required" });
+  }
+  try {
+    const result = await sendPushToAll({ title, body, icon, url, data, tag });
+    if (!result.ok) return res.status(503).json(result);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Failed to send notifications" });
+  }
 });
 
 app.put("/api/admin/games", auth, requireAdmin, (req, res) => {
@@ -1467,6 +1644,17 @@ app.use(
   "/uploads/chat",
   express.static(UPLOADS_CHAT_DIR, { fallthrough: false, index: false, maxAge: "1d" })
 );
+app.get("/sw.js", (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Service-Worker-Allowed", "/");
+  res.type("application/javascript");
+  res.sendFile(path.join(ROOT, "sw.js"));
+});
+app.get("/manifest.webmanifest", (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache");
+  res.type("application/manifest+json");
+  res.sendFile(path.join(ROOT, "manifest.webmanifest"));
+});
 app.use("/admin", express.static(path.join(ROOT, "admin")));
 app.use("/support", express.static(path.join(ROOT, "admin")));
 app.use(express.static(ROOT, { index: "index.html" }));
@@ -1745,6 +1933,9 @@ server.listen(PORT, HOST, () => {
   console.log(`Support panel:    http://${displayHost}:${PORT}/support`);
   console.log(
     `Messenger webhook: ${FACEBOOK_ENABLED ? "configured" : "disabled (set FACEBOOK_* in .env)"}`
+  );
+  console.log(
+    `Web Push:          ${PUSH_ENABLED ? "configured" : "disabled (set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)"}`
   );
   if (!IS_PROD) {
     console.log(`Mode:             development (set NODE_ENV=production for live hosting)`);

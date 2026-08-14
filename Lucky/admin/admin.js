@@ -216,6 +216,7 @@
       await loadSpin();
       await loadCustomers();
       await loadUsers();
+      await loadPush();
     } else {
       config = { winners: [], spinPrizes: [] };
       const winnersData = await api("/api/admin/winners");
@@ -520,6 +521,46 @@
       setStatus("contact-status", "Saved");
     } catch (err) {
       setStatus("contact-status", err.message, true);
+    }
+  });
+
+  async function loadPush() {
+    const meta = document.getElementById("push-meta");
+    try {
+      const data = await api("/api/admin/push");
+      if (meta) {
+        meta.textContent = data.configured
+          ? `Push ready — ${data.count} subscribed device(s).`
+          : "Push not configured. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY on the server.";
+        meta.classList.toggle("error", !data.configured);
+      }
+    } catch (err) {
+      if (meta) {
+        meta.textContent = err.message || "Could not load push status.";
+        meta.classList.add("error");
+      }
+    }
+  }
+
+  document.getElementById("push-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const result = await api("/api/admin/push/send", {
+        method: "POST",
+        body: JSON.stringify({
+          title: document.getElementById("push-title").value,
+          body: document.getElementById("push-body").value,
+          url: document.getElementById("push-url").value || "/",
+          icon: document.getElementById("push-icon").value || "/assets/icons/icon-192.png",
+        }),
+      });
+      setStatus(
+        "push-status",
+        `Sent ${result.sent || 0} · failed ${result.failed || 0} · removed ${result.removed || 0}`
+      );
+      await loadPush();
+    } catch (err) {
+      setStatus("push-status", err.message, true);
     }
   });
 
