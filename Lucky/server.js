@@ -11,6 +11,8 @@ const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const webpush = require("web-push");
+const { mountPlayerApi } = require("./player-api");
+const { dbEnabled } = require("./db");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const PORT = Number(process.env.PORT) || 3000;
@@ -860,6 +862,8 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+mountPlayerApi(app, { auth, requireAdmin });
 
 app.get("/api/facebook/webhook", (req, res) => {
   const mode = String(req.query["hub.mode"] || "");
@@ -1936,6 +1940,9 @@ server.listen(PORT, HOST, () => {
   );
   console.log(
     `Web Push:          ${PUSH_ENABLED ? "configured" : "disabled (set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)"}`
+  );
+  console.log(
+    `Player DB (Neon):  ${dbEnabled() ? "connected (DATABASE_URL set)" : "disabled (set DATABASE_URL)"}`
   );
   if (!IS_PROD) {
     console.log(`Mode:             development (set NODE_ENV=production for live hosting)`);

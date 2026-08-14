@@ -64,6 +64,9 @@
           <button type="button" class="nav-btn" data-tab="customers" data-title="Customers">Customers</button>
           <button type="button" class="nav-btn" data-tab="users" data-title="Users" data-admin-only>Users</button>
           <button type="button" class="nav-btn" data-tab="push" data-title="Push" data-admin-only>Push</button>
+          <button type="button" class="nav-btn" data-tab="deposits" data-title="Deposits" data-admin-only>Deposits</button>
+          <button type="button" class="nav-btn" data-tab="withdrawals" data-title="Withdrawals" data-admin-only>Withdrawals</button>
+          <button type="button" class="nav-btn" data-tab="players" data-title="Players" data-admin-only>Players</button>
         </nav>
         <div class="side-foot">
           <p class="signed-in" id="signed-in"></p>
@@ -426,6 +429,80 @@
               <span class="status" id="push-status"></span>
             </div>
           </form>
+        </section>
+
+        <section class="panel" id="tab-deposits">
+          <header class="panel-head row">
+            <div>
+              <h2>Player deposits</h2>
+              <p>Approve or reject deposit requests from /app/</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="refresh-deposits-btn">Refresh</button>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="deposits-body"></tbody>
+            </table>
+          </div>
+          <span class="status" id="deposits-status"></span>
+        </section>
+
+        <section class="panel" id="tab-withdrawals">
+          <header class="panel-head row">
+            <div>
+              <h2>Player withdrawals</h2>
+              <p>Approve or reject withdraw requests</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="refresh-withdrawals-btn">Refresh</button>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Amount</th>
+                  <th>Destination</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="withdrawals-body"></tbody>
+            </table>
+          </div>
+          <span class="status" id="withdrawals-status"></span>
+        </section>
+
+        <section class="panel" id="tab-players">
+          <header class="panel-head row">
+            <div>
+              <h2>Players</h2>
+              <p>Registered player accounts</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="refresh-players-btn">Refresh</button>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Name</th>
+                  <th>Balance</th>
+                  <th>Points</th>
+                  <th>Referral</th>
+                </tr>
+              </thead>
+              <tbody id="players-body"></tbody>
+            </table>
+          </div>
         </section>
       </main>
     </div>
