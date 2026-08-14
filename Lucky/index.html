@@ -28,8 +28,83 @@
     <div class="page-bg" aria-hidden="true"></div>
     <a class="skip-link" href="#games">Skip to game links</a>
 
+    <section class="welcome-gate" id="welcome-gate" aria-label="Welcome to LUCKY VIPS GAME">
+      <div class="welcome-stage" aria-hidden="true">
+        <div class="welcome-photo"></div>
+        <div class="welcome-veil"></div>
+        <div class="welcome-glow"></div>
+      </div>
+      <div class="welcome-sheet">
+        <div class="welcome-brand">
+          <img class="welcome-logo" src="/assets/icons/icon-512.png" width="96" height="96" alt="LUCKY VIPS GAME logo" />
+          <p class="welcome-name">LUCKY VIPS GAME</p>
+          <h1 class="welcome-title">Welcome home, VIP</h1>
+          <p class="welcome-lead">
+            Glad you’re here. Sign in to unlock verified game links, live support chat, and your player desk.
+          </p>
+        </div>
+
+        <div class="welcome-auth" id="chat-auth">
+          <div class="chat-auth-tabs" role="tablist">
+            <button type="button" class="chat-auth-tab is-active" id="chat-tab-signin" data-mode="signin">Sign in</button>
+            <button type="button" class="chat-auth-tab" id="chat-tab-signup" data-mode="signup">Sign up</button>
+          </div>
+
+          <form class="chat-intake welcome-form" id="chat-signin" autocomplete="on">
+            <label>
+              Email
+              <input id="chat-login-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="you@email.com" />
+            </label>
+            <label>
+              Password
+              <input id="chat-login-password" name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Your password" />
+            </label>
+            <p class="chat-intake-error" id="chat-signin-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Sign in &amp; enter</button>
+          </form>
+
+          <form class="chat-intake welcome-form" id="chat-signup" hidden autocomplete="on">
+            <label>
+              Email
+              <input id="chat-reg-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="you@email.com" />
+            </label>
+            <label>
+              Password
+              <input id="chat-reg-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Create a password" />
+            </label>
+            <label>
+              Name
+              <input id="chat-reg-name" name="name" type="text" required maxlength="80" autocomplete="name" placeholder="Your name" />
+            </label>
+            <label>
+              Phone
+              <input id="chat-reg-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
+            </label>
+            <p class="chat-intake-error" id="chat-signup-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Create account</button>
+          </form>
+
+          <form class="chat-intake welcome-form" id="chat-verify" hidden autocomplete="one-time-code">
+            <p class="chat-intake-title">Verify your email</p>
+            <p class="chat-verify-hint" id="chat-verify-hint">Enter the 6-digit code we sent you — then you’re in.</p>
+            <label>
+              Code
+              <input id="chat-verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
+            </label>
+            <p class="chat-intake-error" id="chat-verify-error" hidden></p>
+            <button type="submit" class="btn btn-fill">Verify &amp; enter</button>
+            <button type="button" class="btn btn-line" id="chat-resend-btn">Resend code</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <div id="site-shell" class="site-shell" hidden>
     <header class="header" id="site-header">
-      <a class="brand" href="#games" aria-label="LUCKY VIPS GAME home">LUCKY VIPS GAME</a>
+      <a class="brand" href="#games" aria-label="LUCKY VIPS GAME home">
+        <img class="brand-mark" src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
+        LUCKY VIPS GAME
+      </a>
       <nav class="header-nav" aria-label="Sections">
         <a href="#games">Games</a>
         <a href="/spin/">Spin</a>
@@ -160,9 +235,12 @@
     <div class="chat" id="chat">
       <div class="chat-panel" id="chat-panel" hidden>
         <div class="chat-head">
-          <div>
-            <strong>Live chat</strong>
-            <small id="chat-status">Sign in to chat</small>
+          <div class="chat-head-brand">
+            <img src="/assets/icons/icon-192.png" width="28" height="28" alt="" />
+            <div>
+              <strong>Live chat</strong>
+              <small id="chat-status">Connected</small>
+            </div>
           </div>
           <button type="button" class="chat-close" id="chat-close" aria-label="Close chat">Close</button>
         </div>
@@ -172,59 +250,6 @@
           <button type="button" data-quick="I need help with a withdrawal">Withdraw</button>
           <button type="button" data-quick="I need help with game links">Games</button>
           <button type="button" data-quick="I have a question about my account">Account</button>
-        </div>
-
-        <div class="chat-auth" id="chat-auth" hidden>
-          <div class="chat-auth-tabs" role="tablist">
-            <button type="button" class="chat-auth-tab is-active" id="chat-tab-signin" data-mode="signin">Sign in</button>
-            <button type="button" class="chat-auth-tab" id="chat-tab-signup" data-mode="signup">Sign up</button>
-          </div>
-
-          <form class="chat-intake" id="chat-signin" autocomplete="on">
-            <label>
-              Email
-              <input id="chat-login-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email" />
-            </label>
-            <label>
-              Password
-              <input id="chat-login-password" name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Password" />
-            </label>
-            <p class="chat-intake-error" id="chat-signin-error" hidden></p>
-            <button type="submit" class="btn btn-fill">Sign in</button>
-          </form>
-
-          <form class="chat-intake" id="chat-signup" hidden autocomplete="on">
-            <label>
-              Email
-              <input id="chat-reg-email" name="email" type="email" required maxlength="120" autocomplete="email" placeholder="Email" />
-            </label>
-            <label>
-              Password
-              <input id="chat-reg-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Password (min 6)" />
-            </label>
-            <label>
-              Name
-              <input id="chat-reg-name" name="name" type="text" required maxlength="80" autocomplete="name" placeholder="Your name" />
-            </label>
-            <label>
-              Phone
-              <input id="chat-reg-phone" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="Phone number" />
-            </label>
-            <p class="chat-intake-error" id="chat-signup-error" hidden></p>
-            <button type="submit" class="btn btn-fill">Create account</button>
-          </form>
-
-          <form class="chat-intake" id="chat-verify" hidden autocomplete="one-time-code">
-            <p class="chat-intake-title">Verify email</p>
-            <p class="chat-verify-hint" id="chat-verify-hint">Enter the 6-digit code sent to your email.</p>
-            <label>
-              Code
-              <input id="chat-verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
-            </label>
-            <p class="chat-intake-error" id="chat-verify-error" hidden></p>
-            <button type="submit" class="btn btn-fill">Verify &amp; start chat</button>
-            <button type="button" class="btn btn-line" id="chat-resend-btn">Resend code</button>
-          </form>
         </div>
 
         <form class="chat-intake" id="chat-intake" hidden autocomplete="on">
@@ -264,6 +289,7 @@
         Chat
         <span class="chat-badge" id="chat-badge" hidden>0</span>
       </button>
+    </div>
     </div>
 
     <script src="script.js"></script>

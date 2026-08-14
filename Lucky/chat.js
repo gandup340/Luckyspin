@@ -12,6 +12,8 @@
   const bodyEl = document.getElementById("chat-body");
   const quickEl = document.getElementById("chat-quick");
   const authEl = document.getElementById("chat-auth");
+  const welcomeGate = document.getElementById("welcome-gate");
+  const siteShell = document.getElementById("site-shell");
   const intake = document.getElementById("chat-intake");
   const intakeError = document.getElementById("chat-intake-error");
   const form = document.getElementById("chat-form");
@@ -190,14 +192,22 @@
     };
   }
 
-  function showAuthMode(mode) {
-    if (!authEl) return;
-    authEl.hidden = false;
-    if (intake) intake.hidden = true;
-    if (form) form.hidden = true;
-    if (bodyEl) bodyEl.hidden = true;
-    if (quickEl) quickEl.hidden = true;
+  function showWelcome(mode = "signin") {
+    if (welcomeGate) welcomeGate.hidden = false;
+    if (siteShell) siteShell.hidden = true;
+    document.body.classList.add("is-welcome");
+    showAuthMode(mode);
+    window.scrollTo(0, 0);
+  }
 
+  function enterSite() {
+    if (welcomeGate) welcomeGate.hidden = true;
+    if (siteShell) siteShell.hidden = false;
+    document.body.classList.remove("is-welcome");
+  }
+
+  function showAuthMode(mode) {
+    if (authEl) authEl.hidden = false;
     const isVerify = mode === "verify";
     const isSignup = mode === "signup";
     tabSignin?.classList.toggle("is-active", mode === "signin");
@@ -207,11 +217,27 @@
     if (signinForm) signinForm.hidden = mode !== "signin";
     if (signupForm) signupForm.hidden = mode !== "signup";
     if (verifyForm) verifyForm.hidden = mode !== "verify";
-    setStatus(isVerify ? "Verify your email" : "Sign in to chat");
+    const title = document.querySelector(".welcome-title");
+    const lead = document.querySelector(".welcome-lead");
+    if (isVerify) {
+      if (title) title.textContent = "Almost there";
+      if (lead) lead.textContent = "Confirm your email and you’re officially in the VIP circle.";
+    } else if (isSignup) {
+      if (title) title.textContent = "Join the VIP circle";
+      if (lead) {
+        lead.textContent =
+          "Create your account in a minute — then chat with us and open verified game doors.";
+      }
+    } else {
+      if (title) title.textContent = "Welcome home, VIP";
+      if (lead) {
+        lead.textContent =
+          "Glad you’re here. Sign in to unlock verified game links, live support chat, and your player desk.";
+      }
+    }
   }
 
   function showGuestIntake() {
-    if (authEl) authEl.hidden = true;
     if (intake) intake.hidden = false;
     if (form) form.hidden = true;
     if (bodyEl) bodyEl.hidden = true;
@@ -220,12 +246,28 @@
   }
 
   function showChatUi() {
-    if (authEl) authEl.hidden = true;
     if (intake) intake.hidden = true;
     if (form) form.hidden = false;
     if (bodyEl) bodyEl.hidden = false;
     if (quickEl) quickEl.hidden = false;
     setStatus(player?.name || player?.email || "Connected");
+  }
+
+  function startChatWithPlayer(p) {
+    cachePlayer(p, token);
+    profile = profileFromPlayer(p);
+    enterSite();
+    if (!profile.email) {
+      setStatus("Add email in account to chat");
+      return;
+    }
+    open = true;
+    panel.hidden = false;
+    fab.setAttribute("aria-expanded", "true");
+    setUnread(0);
+    showChatUi();
+    ensureSocket();
+    if (ws?.readyState === WebSocket.OPEN) joinCustomer(profile);
   }
 
   function clearFile() {
@@ -277,18 +319,6 @@
       email: details.email,
       conversationId: details.conversationId || undefined,
     });
-  }
-
-  function startChatWithPlayer(p) {
-    cachePlayer(p, token);
-    profile = profileFromPlayer(p);
-    if (!profile.email) {
-      setStatus("Add email in account to chat");
-      return;
-    }
-    showChatUi();
-    ensureSocket();
-    if (ws?.readyState === WebSocket.OPEN) joinCustomer(profile);
   }
 
   function ensureSocket() {
@@ -372,34 +402,11 @@
   }
 
   function openPanel() {
-    open = true;
-    panel.hidden = false;
-    fab.setAttribute("aria-expanded", "true");
-    setUnread(0);
-
-    if (isMobile()) {
-      if (player?.email && token) {
-        startChatWithPlayer(player);
-        return;
-      }
-      showAuthMode("signin");
+    if (!(player?.email && token)) {
+      showWelcome("signin");
       return;
     }
-
-    if (player?.email && token) {
-      startChatWithPlayer(player);
-      return;
-    }
-
-    ensureSocket();
-    if (profile) {
-      showChatUi();
-      if (ws?.readyState === WebSocket.OPEN) joinCustomer(profile);
-      else setStatus("Connecting…");
-    } else {
-      showGuestIntake();
-      document.getElementById("chat-name")?.focus();
-    }
+    startChatWithPlayer(player);
   }
 
   function closePanel() {
@@ -409,6 +416,10 @@
   }
 
   function togglePanel() {
+    if (!(player?.email && token)) {
+      showWelcome("signin");
+      return;
+    }
     if (open) closePanel();
     else openPanel();
   }
@@ -420,7 +431,7 @@
       hintEl.textContent = hint || `Enter the 6-digit code sent to ${email}.`;
       if (devCode) hintEl.textContent += ` Dev code: ${devCode}`;
     }
-    showAuthMode("verify");
+    showWelcome("verify");
     document.getElementById("chat-verify-code")?.focus();
   }
 
@@ -449,7 +460,6 @@
     const password = String(document.getElementById("chat-login-password")?.value || "");
     const errEl = document.getElementById("chat-signin-error");
     setError(errEl, "");
-    setStatus("Signing in…");
     const { res, data } = await api("/api/player/login", { email, password });
     if (data.needsVerification) {
       showVerify(data.email || email, data.error, data.devCode);
@@ -457,7 +467,6 @@
     }
     if (!res.ok || !data.token) {
       setError(errEl, data.error || "Sign in failed");
-      setStatus("Sign in to chat");
       return;
     }
     cachePlayer(data.player, data.token);
@@ -478,11 +487,9 @@
       setError(errEl, "Enter a valid phone number");
       return;
     }
-    setStatus("Creating account…");
     const { res, data } = await api("/api/player/register", { email, password, name, phone });
     if (!res.ok) {
       setError(errEl, data.error || "Sign up failed");
-      setStatus("Sign in to chat");
       return;
     }
     showVerify(email, data.message, data.devCode);
@@ -493,14 +500,12 @@
     const code = String(document.getElementById("chat-verify-code")?.value || "").trim();
     const errEl = document.getElementById("chat-verify-error");
     setError(errEl, "");
-    setStatus("Verifying…");
     const { res, data } = await api("/api/player/verify-email", {
       email: pendingEmail,
       code,
     });
     if (!res.ok || !data.token) {
       setError(errEl, data.error || "Verification failed");
-      setStatus("Verify your email");
       return;
     }
     cachePlayer(data.player, data.token);
@@ -615,5 +620,11 @@
     if (emailEl) emailEl.value = savedChat.email || "";
   }
 
-  restorePlayerSession();
+  restorePlayerSession().then((ok) => {
+    if (ok && player?.email) {
+      enterSite();
+      return;
+    }
+    showWelcome("signin");
+  });
 })();
