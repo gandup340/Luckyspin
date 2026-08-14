@@ -299,7 +299,7 @@
       "id": "u_admin",
       "username": "admin",
       "name": "Admin",
-      "passwordHash": "$2b$12$iK1lE9okPF0iBmeZERkxKe3cYI8g5.TsRCKXbyzJMhWAJpkDPsOQG",
+      "passwordHash": "$2b$12$ZTteCn5/213nXx8LUX8ySe4A1VWS4QZKhsR52xGIjNwpeh/puoY7K",
       "role": "admin",
       "createdAt": 1784950042727
     },

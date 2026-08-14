@@ -171,10 +171,13 @@ function ensureUsers(cfg) {
       console.error(`[security] ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       process.exit(1);
     }
+    const username = String(process.env.ADMIN_USERNAME || "admin")
+      .trim()
+      .toLowerCase() || "admin";
     cfg.users = [
       {
         id: "u_admin",
-        username: "admin",
+        username,
         name: "Admin",
         passwordHash: hashPassword(password),
         role: "admin",
@@ -186,6 +189,30 @@ function ensureUsers(cfg) {
       console.warn(`[security] Dev admin password is default (${DEFAULT_DEV_PASSWORD}). Change it.`);
     }
   }
+
+  // Optional: force-sync primary admin from env (useful on Render redeploys).
+  const syncPass = String(process.env.ADMIN_PASSWORD || "").trim();
+  const syncUser = String(process.env.ADMIN_USERNAME || "admin")
+    .trim()
+    .toLowerCase() || "admin";
+  if (syncPass && syncPass.length >= MIN_PASSWORD_LENGTH && String(process.env.ADMIN_SYNC || "").trim() === "1") {
+    let admin = (cfg.users || []).find((u) => u.id === "u_admin") || (cfg.users || []).find((u) => normalizeRole(u.role) === "admin");
+    if (!admin) {
+      admin = {
+        id: "u_admin",
+        username: syncUser,
+        name: "Admin",
+        role: "admin",
+        createdAt: Date.now(),
+      };
+      cfg.users = cfg.users || [];
+      cfg.users.unshift(admin);
+    }
+    admin.username = syncUser;
+    admin.passwordHash = hashPassword(syncPass);
+    dirty = true;
+  }
+
   if (dirty) writeJson(CONFIG_PATH, cfg);
   return cfg;
 }
