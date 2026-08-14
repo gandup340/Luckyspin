@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>LUCKY VIPS GAME — Player App</title>
+    <meta name="theme-color" content="#141618" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/app/app.css" />
+  </head>
+  <body class="app-body">
+    <div class="page-bg" aria-hidden="true"></div>
+
+    <div id="auth-view" class="app-auth">
+      <p class="login-brand">LUCKY VIPS GAME</p>
+      <h1 id="auth-title">Sign in</h1>
+      <form id="auth-form" class="app-card">
+        <label>Username <input id="auth-username" autocomplete="username" required /></label>
+        <label>Password <input id="auth-password" type="password" autocomplete="current-password" required /></label>
+        <div id="register-extra" hidden>
+          <label>Name <input id="auth-name" autocomplete="name" /></label>
+          <label>Referral code (optional) <input id="auth-referral" /></label>
+        </div>
+        <button type="submit" class="btn btn-fill" id="auth-submit">Sign in</button>
+        <p class="app-error" id="auth-error" hidden></p>
+        <button type="button" class="linkish" id="auth-toggle">Need an account? Register</button>
+      </form>
+      <a class="app-back" href="/">← Back to site</a>
+    </div>
+
+    <div id="app-view" hidden>
+      <header class="app-top">
+        <strong>LUCKY VIPS</strong>
+        <div class="app-top-right">
+          <span id="bal-label">$0.00</span>
+          <button type="button" class="btn btn-line btn-sm" id="logout-btn">Log out</button>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <section class="app-panel is-active" data-panel="home">
+          <h2>Welcome, <span id="home-name">Player</span></h2>
+          <p class="muted">VIP: <span id="home-tier">bronze</span> · Points: <span id="home-points">0</span></p>
+          <p class="muted">Referral code: <code id="home-ref"></code></p>
+          <div class="app-quick">
+            <a class="btn btn-fill" href="/#games">Open game links</a>
+            <a class="btn btn-line" href="/spin/">Spin</a>
+            <button type="button" class="btn btn-line" data-go="deposit">Deposit</button>
+          </div>
+        </section>
+
+        <section class="app-panel" data-panel="deposit">
+          <h2>Deposit</h2>
+          <p class="muted">Submit a deposit request. Admin will approve after payment.</p>
+          <form id="deposit-form" class="app-card">
+            <label>Amount (USD) <input id="dep-amount" type="number" min="1" step="1" required /></label>
+            <label>Method <input id="dep-method" placeholder="Cash App / Zelle / ..." required /></label>
+            <label>Game (optional) <input id="dep-game" placeholder="juwa" /></label>
+            <label>Reference (optional) <input id="dep-ref" /></label>
+            <button type="submit" class="btn btn-fill">Submit deposit</button>
+            <p class="app-status" id="dep-status"></p>
+          </form>
+          <h3>History</h3>
+          <ul id="dep-list" class="app-list"></ul>
+        </section>
+
+        <section class="app-panel" data-panel="withdraw">
+          <h2>Withdraw</h2>
+          <form id="withdraw-form" class="app-card">
+            <label>Amount (USD) <input id="wd-amount" type="number" min="1" step="1" required /></label>
+            <label>Method <input id="wd-method" placeholder="Cash App / Zelle" required /></label>
+            <label>Destination <input id="wd-dest" placeholder="$cashtag or email" required /></label>
+            <button type="submit" class="btn btn-fill">Request withdraw</button>
+            <p class="app-status" id="wd-status"></p>
+          </form>
+          <h3>History</h3>
+          <ul id="wd-list" class="app-list"></ul>
+        </section>
+
+        <section class="app-panel" data-panel="account">
+          <h2>Account</h2>
+          <form id="profile-form" class="app-card">
+            <label>Name <input id="pf-name" /></label>
+            <label>Phone <input id="pf-phone" /></label>
+            <label>Email <input id="pf-email" /></label>
+            <label>Facebook name <input id="pf-fb" /></label>
+            <button type="submit" class="btn btn-fill">Save profile</button>
+            <p class="app-status" id="pf-status"></p>
+          </form>
+          <h3>Game IDs</h3>
+          <form id="gid-form" class="app-card">
+            <label>Game key <input id="gid-key" placeholder="juwa" required /></label>
+            <label>Your game ID <input id="gid-uid" required /></label>
+            <button type="submit" class="btn btn-line">Save game ID</button>
+          </form>
+          <ul id="gid-list" class="app-list"></ul>
+        </section>
+      </main>
+
+      <nav class="app-bottom" aria-label="Player navigation">
+        <button type="button" class="is-active" data-go="home">Home</button>
+        <button type="button" data-go="deposit">Deposit</button>
+        <button type="button" data-go="withdraw">Withdraw</button>
+        <button type="button" data-go="account">Account</button>
+      </nav>
+    </div>
+
+    <script src="/app/app.js"></script>
+  </body>
+</html>

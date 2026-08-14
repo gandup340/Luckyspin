@@ -1,0 +1,158 @@
+.app-body {
+  min-height: 100dvh;
+  padding-bottom: calc(72px + var(--safe-bottom, 0px));
+}
+
+.app-auth {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 4rem 1.25rem 2rem;
+}
+
+.app-auth .login-brand,
+.app-auth h1 {
+  text-align: center;
+}
+
+.app-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: rgba(34, 38, 43, 0.85);
+  border-radius: 10px;
+}
+
+.app-card label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.app-card input {
+  border: 1px solid var(--line);
+  background: #12151a;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+
+.app-error {
+  color: var(--danger);
+}
+
+.app-status {
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.app-back,
+.linkish {
+  display: inline-block;
+  margin-top: 1rem;
+  color: var(--teal-deep);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.app-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(20, 22, 24, 0.92);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+
+.app-top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.app-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.1rem 1rem 2rem;
+}
+
+.app-panel {
+  display: none;
+}
+
+.app-panel.is-active {
+  display: block;
+}
+
+.app-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.app-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.app-list li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  background: rgba(34, 38, 43, 0.7);
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.app-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem;
+  padding: 0.45rem 0.4rem calc(0.45rem + var(--safe-bottom, 0px));
+  background: rgba(15, 17, 20, 0.96);
+  border-top: 1px solid var(--line);
+}
+
+.app-bottom button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.65rem 0.2rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-bottom button.is-active {
+  color: var(--teal-deep);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+code {
+  color: var(--teal-deep);
+}

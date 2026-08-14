@@ -217,6 +217,9 @@
       await loadCustomers();
       await loadUsers();
       await loadPush();
+      await loadPlayerDeposits();
+      await loadPlayerWithdrawals();
+      await loadPlayersDb();
     } else {
       config = { winners: [], spinPrizes: [] };
       const winnersData = await api("/api/admin/winners");
@@ -563,6 +566,143 @@
       setStatus("push-status", err.message, true);
     }
   });
+
+  function money(cents) {
+    return `$${(Number(cents || 0) / 100).toFixed(2)}`;
+  }
+
+  async function loadPlayerDeposits() {
+    const body = document.getElementById("deposits-body");
+    if (!body) return;
+    try {
+      const data = await api("/api/admin/player-deposits");
+      body.innerHTML = (data.deposits || [])
+        .map((d) => {
+          const actions =
+            d.status === "pending"
+              ? `<button type="button" data-dep-approve="${d.id}">Approve</button>
+                 <button type="button" class="danger" data-dep-reject="${d.id}">Reject</button>`
+              : "—";
+          return `<tr>
+            <td>${esc(d.name || d.username || "")}</td>
+            <td>${money(d.amountCents)}</td>
+            <td>${esc(d.method || "")}<br/><small>${esc(d.reference || "")}</small></td>
+            <td>${esc(d.status)}</td>
+            <td>${actions}</td>
+          </tr>`;
+        })
+        .join("");
+      body.querySelectorAll("[data-dep-approve]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/admin/player-deposits/${btn.dataset.depApprove}/approve`, {
+              method: "POST",
+              body: "{}",
+            });
+            await loadPlayerDeposits();
+            setStatus("deposits-status", "Approved");
+          } catch (err) {
+            setStatus("deposits-status", err.message, true);
+          }
+        });
+      });
+      body.querySelectorAll("[data-dep-reject]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/admin/player-deposits/${btn.dataset.depReject}/reject`, {
+              method: "POST",
+              body: "{}",
+            });
+            await loadPlayerDeposits();
+            setStatus("deposits-status", "Rejected");
+          } catch (err) {
+            setStatus("deposits-status", err.message, true);
+          }
+        });
+      });
+    } catch (err) {
+      setStatus("deposits-status", err.message, true);
+    }
+  }
+
+  async function loadPlayerWithdrawals() {
+    const body = document.getElementById("withdrawals-body");
+    if (!body) return;
+    try {
+      const data = await api("/api/admin/player-withdrawals");
+      body.innerHTML = (data.withdrawals || [])
+        .map((w) => {
+          const actions =
+            w.status === "pending"
+              ? `<button type="button" data-wd-approve="${w.id}">Approve</button>
+                 <button type="button" class="danger" data-wd-reject="${w.id}">Reject</button>`
+              : "—";
+          return `<tr>
+            <td>${esc(w.name || w.username || "")}</td>
+            <td>${money(w.amountCents)}</td>
+            <td>${esc(w.method || "")}<br/><small>${esc(w.destination || "")}</small></td>
+            <td>${esc(w.status)}</td>
+            <td>${actions}</td>
+          </tr>`;
+        })
+        .join("");
+      body.querySelectorAll("[data-wd-approve]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/admin/player-withdrawals/${btn.dataset.wdApprove}/approve`, {
+              method: "POST",
+              body: "{}",
+            });
+            await loadPlayerWithdrawals();
+            setStatus("withdrawals-status", "Approved");
+          } catch (err) {
+            setStatus("withdrawals-status", err.message, true);
+          }
+        });
+      });
+      body.querySelectorAll("[data-wd-reject]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/admin/player-withdrawals/${btn.dataset.wdReject}/reject`, {
+              method: "POST",
+              body: "{}",
+            });
+            await loadPlayerWithdrawals();
+            setStatus("withdrawals-status", "Rejected");
+          } catch (err) {
+            setStatus("withdrawals-status", err.message, true);
+          }
+        });
+      });
+    } catch (err) {
+      setStatus("withdrawals-status", err.message, true);
+    }
+  }
+
+  async function loadPlayersDb() {
+    const body = document.getElementById("players-body");
+    if (!body) return;
+    try {
+      const data = await api("/api/admin/players");
+      body.innerHTML = (data.players || [])
+        .map(
+          (p) => `<tr>
+            <td>${esc(p.username)}</td>
+            <td>${esc(p.name || "")}</td>
+            <td>${money(p.balanceCents)}</td>
+            <td>${esc(p.points)}</td>
+            <td><code>${esc(p.referralCode || "")}</code></td>
+          </tr>`
+        )
+        .join("");
+    } catch {
+      body.innerHTML = "";
+    }
+  }
+
+  document.getElementById("refresh-deposits-btn")?.addEventListener("click", () => loadPlayerDeposits());
+  document.getElementById("refresh-withdrawals-btn")?.addEventListener("click", () => loadPlayerWithdrawals());
+  document.getElementById("refresh-players-btn")?.addEventListener("click", () => loadPlayersDb());
 
   // Payments
   let payments = [];
