@@ -16,6 +16,11 @@
   const confettiCtx = confettiCanvas.getContext("2d");
 
   const DEVICE_KEY = "lucky_vips_spin_device";
+  const PLAYER_KEY = "lucky_player_cache";
+  const params = new URLSearchParams(location.search);
+  const isEmbed = params.get("embed") === "1" || window.self !== window.top;
+
+  if (isEmbed) document.body.classList.add("is-embed");
 
   let prizes = [];
   let rotation = 0;
@@ -26,6 +31,36 @@
   let audioCtx = null;
   let dpr = 1;
   let prizeLocked = false;
+
+  function readPlayerProfile() {
+    const fromQuery = {
+      name: String(params.get("name") || "").trim(),
+      phone: String(params.get("phone") || "").trim(),
+      email: String(params.get("email") || "").trim(),
+    };
+    try {
+      const cached = JSON.parse(localStorage.getItem(PLAYER_KEY) || "null");
+      if (cached && typeof cached === "object") {
+        return {
+          name: fromQuery.name || String(cached.name || "").trim(),
+          phone: fromQuery.phone || String(cached.phone || "").trim(),
+          email: fromQuery.email || String(cached.email || "").trim(),
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+    return fromQuery;
+  }
+
+  function fillClaimFields(profile) {
+    const nameEl = document.getElementById("claim-name");
+    const phoneEl = document.getElementById("claim-phone");
+    const emailEl = document.getElementById("claim-email");
+    if (nameEl && profile.name) nameEl.value = profile.name;
+    if (phoneEl && profile.phone) phoneEl.value = profile.phone;
+    if (emailEl && profile.email) emailEl.value = profile.email;
+  }
 
   function getDeviceId() {
     try {
@@ -313,9 +348,13 @@
   function openClaim(prize) {
     currentPrize = prize;
     claimTitle.textContent = prize.label;
-    claimCopy.textContent = "Enter your name, phone, and email to claim this prize.";
+    const profile = readPlayerProfile();
+    const hasProfile = Boolean(profile.name && profile.phone && profile.email);
+    claimCopy.textContent = hasProfile
+      ? "Confirm your details to claim this prize."
+      : "Enter your name, phone, and email to claim this prize.";
     claimError.hidden = true;
-    if (claimPhone) claimPhone.value = "";
+    fillClaimFields(profile);
     claimModal.hidden = false;
     document.getElementById("claim-name")?.focus();
   }

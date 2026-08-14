@@ -161,6 +161,7 @@
       <nav class="player-drawer" id="player-drawer" hidden aria-label="Player menu">
         <p class="player-drawer-label">Menu</p>
         <button type="button" class="player-nav-btn is-active" data-player-view="chat">Chat</button>
+        <button type="button" class="player-nav-btn" data-player-view="spin">Spin</button>
         <button type="button" class="player-nav-btn" data-player-view="games">Games</button>
         <button type="button" class="player-nav-btn" data-player-view="settings">Settings</button>
         <button type="button" class="player-logout" id="player-logout">Log out</button>
@@ -225,6 +226,19 @@
                 </div>
               </form>
             </div>
+          </div>
+        </section>
+
+        <section class="player-view" id="player-view-spin" data-player-view="spin" hidden>
+          <div class="player-spin-wrap">
+            <iframe
+              id="player-spin-frame"
+              class="player-spin-frame"
+              title="Spin and claim prize"
+              src="about:blank"
+              loading="lazy"
+              allow="clipboard-write"
+            ></iframe>
           </div>
         </section>
 

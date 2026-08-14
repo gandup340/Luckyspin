@@ -1,3 +1,30 @@
+.spin-page.is-embed .spin-site-header,
+.spin-page.is-embed .spin-cta {
+  display: none !important;
+}
+
+.spin-page.is-embed {
+  min-height: 100%;
+  background: #0a0c0e;
+}
+
+.spin-page.is-embed .spin-main {
+  padding: 1rem 1rem 1.5rem;
+}
+
+.spin-page.is-embed .spin-main h1 {
+  font-size: clamp(1.8rem, 7vw, 2.6rem);
+}
+
+.spin-page.is-embed .spin-lead {
+  font-size: 0.95rem;
+  margin-top: 0.55rem;
+}
+
+.spin-page.is-embed .spin-stage {
+  margin-top: 1rem;
+}
+
 .spin-page {
   min-height: 100vh;
   min-height: 100dvh;

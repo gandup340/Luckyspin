@@ -17,6 +17,7 @@
 
   const titles = {
     chat: "Chat",
+    spin: "Spin & Win",
     games: "Games",
     settings: "Settings",
   };
@@ -59,6 +60,22 @@
     else closeDrawer();
   }
 
+  function ensureSpinFrame() {
+    const frame = document.getElementById("player-spin-frame");
+    if (!frame) return;
+    const player = loadPlayer() || {};
+    const params = new URLSearchParams({ embed: "1" });
+    if (player.name) params.set("name", player.name);
+    if (player.phone) params.set("phone", player.phone);
+    if (player.email) params.set("email", player.email);
+    const next = `/spin/?${params.toString()}`;
+    // Reload when profile changes or first open so claim fields stay current.
+    if (frame.dataset.loadedSrc !== next) {
+      frame.src = next;
+      frame.dataset.loadedSrc = next;
+    }
+  }
+
   function showView(name) {
     const view = String(name || "chat");
     document.querySelectorAll(".player-view").forEach((el) => {
@@ -72,6 +89,7 @@
     if (titleEl) titleEl.textContent = titles[view] || "LUCKY VIPS";
     closeDrawer();
     if (view === "settings") fillSettings();
+    if (view === "spin") ensureSpinFrame();
   }
 
   function fillSettings() {
