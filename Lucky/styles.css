@@ -305,6 +305,58 @@ img {
   text-decoration: underline;
 }
 
+.welcome-install {
+  position: fixed;
+  left: max(0.85rem, env(safe-area-inset-left));
+  bottom: max(0.85rem, env(safe-area-inset-bottom));
+  z-index: 85;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid rgba(238, 241, 244, 0.16);
+  border-radius: var(--radius);
+  background: rgba(27, 30, 34, 0.92);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.welcome-install:hover {
+  border-color: var(--teal);
+  color: var(--teal-deep);
+}
+
+.welcome-install[hidden] {
+  display: none !important;
+}
+
+.welcome-install-hint {
+  position: fixed;
+  left: max(0.85rem, env(safe-area-inset-left));
+  bottom: calc(3.7rem + env(safe-area-inset-bottom, 0px));
+  z-index: 85;
+  max-width: min(78vw, 260px);
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius);
+  background: rgba(15, 18, 20, 0.92);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.welcome-install-hint[hidden] {
+  display: none !important;
+}
+
+body:not(.is-welcome) .welcome-install,
+body:not(.is-welcome) .welcome-install-hint {
+  display: none !important;
+}
+
 .chat-code-box {
   margin: 0;
   padding: 0.75rem 0.9rem;
@@ -1500,6 +1552,18 @@ body.is-welcome {
   color: var(--teal-deep);
 }
 
+.chat-attach-btn.is-recording,
+.chat-attach-btn.chat-hang-btn {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.bubble-audio {
+  display: block;
+  width: min(100%, 16rem);
+  margin: 0.15rem 0;
+}
+
 .chat-file-name {
   flex: 1;
   min-width: 0;
@@ -1920,6 +1984,316 @@ body.is-welcome {
 
 .pwa-status.is-error {
   color: var(--danger);
+}
+
+/* —— Player shell (post-login) —— */
+.player-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: #121518;
+}
+
+.player-shell[hidden] {
+  display: none !important;
+}
+
+.player-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.4rem;
+  padding: 0.55rem 0.85rem;
+  padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--line);
+  background: #0f1214;
+}
+
+.player-burger {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  display: grid;
+  place-content: center;
+  gap: 0.28rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.player-burger span {
+  display: block;
+  width: 1.05rem;
+  height: 2px;
+  background: var(--ink);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.player-burger.is-open span:nth-child(1) {
+  transform: translateY(5px) rotate(45deg);
+}
+.player-burger.is-open span:nth-child(2) {
+  opacity: 0;
+}
+.player-burger.is-open span:nth-child(3) {
+  transform: translateY(-5px) rotate(-45deg);
+}
+
+.player-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.player-bar-brand img {
+  border-radius: 6px;
+}
+
+.player-bar-brand strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.player-bar-user {
+  margin-left: auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.player-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.player-drawer-backdrop[hidden] {
+  display: none !important;
+}
+
+.player-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 73;
+  width: min(82vw, 300px);
+  padding: calc(1rem + env(safe-area-inset-top, 0px)) 0.85rem 1rem;
+  background: #16191d;
+  border-right: 1px solid var(--line);
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  animation: welcomeIn 0.2s ease;
+}
+
+.player-drawer[hidden] {
+  display: none !important;
+}
+
+.player-drawer-label {
+  margin: 0 0 0.45rem;
+  padding: 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.player-nav-btn,
+.player-logout {
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.85rem 0.75rem;
+  cursor: pointer;
+}
+
+.player-nav-btn.is-active,
+.player-nav-btn:hover {
+  background: rgba(43, 184, 174, 0.14);
+  color: var(--teal-deep);
+}
+
+.player-logout {
+  margin-top: 0.75rem;
+  color: var(--flare);
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.player-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.player-view[hidden] {
+  display: none !important;
+}
+
+.player-view[data-player-view="chat"] {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-chat {
+  position: static !important;
+  right: auto;
+  bottom: auto;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-chat-panel {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  animation: none !important;
+}
+
+.player-chat-panel .chat-body {
+  flex: 1;
+}
+
+.player-games-head {
+  padding: 1rem 1rem 0.5rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.player-games-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.player-games-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+#player-view-games .game-grid {
+  padding: 0.75rem 1rem 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+#player-view-games .game-row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 700px) {
+  #player-view-games .game-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.player-settings {
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.player-settings h2 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.player-settings-lead {
+  margin: 0;
+  color: var(--muted);
+}
+
+.player-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(27, 30, 34, 0.9);
+}
+
+.player-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.player-card label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.player-card input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.player-settings-ok {
+  margin: 0;
+  color: var(--teal-deep);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.player-settings-ok[hidden] {
+  display: none !important;
+}
+
+body.is-player {
+  overflow: hidden;
+}
+
+body.is-player .welcome-gate,
+body.is-player .welcome-install,
+body.is-player .welcome-install-hint {
+  display: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

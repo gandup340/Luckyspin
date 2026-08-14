@@ -1,77 +1,100 @@
 const crypto = require("crypto");
+const nodemailer = require("nodemailer");
+
+let transporter = null;
 
 function emailConfigured() {
-  return Boolean(
-    String(process.env.RESEND_API_KEY || "").trim() ||
-      String(process.env.SMTP_HOST || "").trim()
-  );
+  return Boolean(String(process.env.SMTP_HOST || "").trim());
 }
 
-async function sendViaResend({ to, subject, text, html }) {
-  const key = String(process.env.RESEND_API_KEY || "").trim();
-  if (!key) return false;
-  const from =
-    String(process.env.EMAIL_FROM || "").trim() || "LUCKY VIPS GAME <onboarding@resend.dev>";
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, to: [to], subject, text, html }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend failed: ${res.status} ${body.slice(0, 200)}`);
-  }
-  return true;
-}
-
-async function sendViaSmtp({ to, subject, text, html }) {
+function smtpSettings() {
   const host = String(process.env.SMTP_HOST || "").trim();
-  if (!host) return false;
-  let nodemailer;
-  try {
-    nodemailer = require("nodemailer");
-  } catch {
-    throw new Error("Install nodemailer to use SMTP (npm i nodemailer)");
-  }
+  if (!host) return null;
   const port = Number(process.env.SMTP_PORT || 587);
   const user = String(process.env.SMTP_USER || "").trim();
   const pass = String(process.env.SMTP_PASS || "").trim();
+  const secureEnv = String(process.env.SMTP_SECURE || "").trim().toLowerCase();
+  const secure = secureEnv === "1" || secureEnv === "true" || port === 465;
   const from =
-    String(process.env.EMAIL_FROM || "").trim() || user || "noreply@luckyvips.game";
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user ? { user, pass } : undefined,
-  });
-  await transporter.sendMail({ from, to, subject, text, html });
-  return true;
+    String(process.env.EMAIL_FROM || "").trim() ||
+    (user ? `LUCKY VIPS GAME <${user}>` : "LUCKY VIPS GAME <noreply@luckyvipsgame.com>");
+  return { host, port, user, pass, secure, from };
+}
+
+function getTransporter() {
+  const cfg = smtpSettings();
+  if (!cfg) return null;
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+      tls: {
+        // Many shared hosts use mismatched certs on alternate names.
+        rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "1") !== "0",
+      },
+    });
+  }
+  return transporter;
+}
+
+function brandEmailHtml({ title, bodyHtml }) {
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#141618;color:#eef1f4;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;padding:28px 18px;">
+      <div style="background:#1b1e22;border:1px solid #2a3036;border-radius:10px;padding:24px;">
+        <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#3dcdc2;font-weight:700;">LUCKY VIPS GAME</p>
+        <h1 style="margin:0 0 14px;font-size:22px;line-height:1.25;color:#eef1f4;">${title}</h1>
+        <div style="font-size:15px;line-height:1.55;color:#c4cad1;">${bodyHtml}</div>
+      </div>
+      <p style="margin:14px 0 0;font-size:12px;color:#8b939c;text-align:center;">Play responsibly. 18+ only.</p>
+    </div>
+  </body>
+</html>`;
 }
 
 /**
- * Send transactional email. Returns { sent, previewCode }.
- * If mail cannot be delivered, previewCode is always returned so signup/reset can continue.
+ * Send transactional email over SMTP.
+ * Returns { sent, previewCode, error }.
+ * previewCode is returned when SMTP is not configured or send fails.
  */
-async function sendMail({ to, subject, text, html, previewCode }) {
-  try {
-    if (await sendViaResend({ to, subject, text, html })) {
-      return { sent: true, previewCode: null };
-    }
-    if (await sendViaSmtp({ to, subject, text, html })) {
-      return { sent: true, previewCode: null };
-    }
-  } catch (err) {
-    console.error("sendMail:", err.message || err);
+async function sendMail({ to, subject, text, html, previewCode, title }) {
+  const cfg = smtpSettings();
+  if (!cfg) {
+    console.log(`[email:fallback] SMTP not configured. to=${to} subject=${subject}\n${text}`);
+    return { sent: false, previewCode: previewCode || null, error: "SMTP not configured" };
   }
 
-  console.log(`[email:fallback] to=${to} subject=${subject}\n${text}`);
-  return {
-    sent: false,
-    previewCode: previewCode || null,
-  };
+  try {
+    const transport = getTransporter();
+    const finalHtml =
+      html ||
+      brandEmailHtml({
+        title: title || subject,
+        bodyHtml: `<p style="white-space:pre-wrap;margin:0;">${String(text || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")}</p>`,
+      });
+    await transport.sendMail({
+      from: cfg.from,
+      to,
+      subject,
+      text,
+      html: finalHtml,
+    });
+    return { sent: true, previewCode: null };
+  } catch (err) {
+    console.error("sendMail SMTP:", err.message || err);
+    console.log(`[email:fallback] to=${to} subject=${subject}\n${text}`);
+    return {
+      sent: false,
+      previewCode: previewCode || null,
+      error: err.message || "SMTP send failed",
+    };
+  }
 }
 
 function makeVerifyCode() {
@@ -84,7 +107,9 @@ function hashVerifyCode(code) {
 
 module.exports = {
   emailConfigured,
+  smtpSettings,
   sendMail,
   makeVerifyCode,
   hashVerifyCode,
+  brandEmailHtml,
 };

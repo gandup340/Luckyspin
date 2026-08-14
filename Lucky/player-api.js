@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { dbEnabled, query, withTransaction } = require("./db");
-const { sendMail, makeVerifyCode, hashVerifyCode } = require("./mail");
+const { sendMail, makeVerifyCode, hashVerifyCode, brandEmailHtml } = require("./mail");
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_DAYS = 30;
@@ -90,13 +90,20 @@ async function issueVerification(player, { reason = "verify" } = {}) {
       ? "Your LUCKY VIPS GAME verification code"
       : "Verify your LUCKY VIPS GAME email";
   const text = `Your verification code is ${code}. It expires in ${VERIFY_MINUTES} minutes.`;
-  const html = `<p>Your verification code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${VERIFY_MINUTES} minutes.</p>`;
+  const html = brandEmailHtml({
+    title: "Verify your email",
+    bodyHtml: `<p>Welcome to LUCKY VIPS GAME.</p>
+      <p>Your verification code is:</p>
+      <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
+      <p>This code expires in ${VERIFY_MINUTES} minutes.</p>`,
+  });
   const mail = await sendMail({
     to: player.email,
     subject,
     text,
     html,
     previewCode: code,
+    title: "Verify your email",
   });
   return mail;
 }
@@ -114,13 +121,21 @@ async function issuePasswordReset(player) {
   );
   const subject = "Reset your LUCKY VIPS GAME password";
   const text = `Your password reset code is ${code}. It expires in ${VERIFY_MINUTES} minutes. If you did not request this, ignore this email.`;
-  const html = `<p>Your password reset code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${VERIFY_MINUTES} minutes.</p><p>If you did not request this, you can ignore this email.</p>`;
+  const html = brandEmailHtml({
+    title: "Reset your password",
+    bodyHtml: `<p>We received a request to reset your LUCKY VIPS GAME password.</p>
+      <p>Your reset code is:</p>
+      <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
+      <p>This code expires in ${VERIFY_MINUTES} minutes.</p>
+      <p>If you did not request this, you can ignore this email.</p>`,
+  });
   return sendMail({
     to: player.email,
     subject,
     text,
     html,
     previewCode: code,
+    title: "Reset your password",
   });
 }
 
@@ -509,6 +524,31 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         return res.status(409).json({ error: "Email already in use" });
       }
       res.status(500).json({ error: "Could not update profile" });
+    }
+  });
+
+  app.put("/api/player/password", requireDb, playerAuth, async (req, res) => {
+    try {
+      const currentPassword = String(req.body?.currentPassword || "");
+      const newPassword = String(req.body?.newPassword || "");
+      if (!currentPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: "Enter your current password and a new password (min 6)." });
+      }
+      const ok = await bcrypt.compare(currentPassword, req.player.password_hash);
+      if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+      await query(`UPDATE players SET password_hash = $2, updated_at = now() WHERE id = $1`, [
+        req.player.id,
+        passwordHash,
+      ]);
+      await query(`DELETE FROM player_sessions WHERE player_id = $1 AND token <> $2`, [
+        req.player.id,
+        req.playerToken,
+      ]);
+      res.json({ ok: true, message: "Password updated." });
+    } catch (err) {
+      console.error("change-password:", err.message || err);
+      res.status(500).json({ error: "Could not update password" });
     }
   });
 

@@ -31,6 +31,11 @@
   const threadFile = document.getElementById("thread-file");
   const threadFileName = document.getElementById("thread-file-name");
   const threadFileClear = document.getElementById("thread-file-clear");
+  const threadVoiceBtn = document.getElementById("thread-voice-btn");
+  const threadCallBtn = document.getElementById("thread-call-btn");
+  const threadHangBtn = document.getElementById("thread-hang-btn");
+  const threadLocalAudio = document.getElementById("thread-local-audio");
+  const threadRemoteAudio = document.getElementById("thread-remote-audio");
   const chatBadge = document.getElementById("chat-nav-badge");
   const mobileChatBadge = document.getElementById("mobile-chat-badge");
   const chatLayout = document.getElementById("chat-layout");
@@ -990,11 +995,19 @@
     if (!message) return "No messages";
     if (message.attachment?.kind === "image") return message.text && message.text !== "Photo" ? message.text : "Photo";
     if (message.attachment?.kind === "video") return message.text && message.text !== "Video" ? message.text : "Video";
+    if (message.attachment?.kind === "audio") {
+      return message.text && message.text !== "Voice message" && message.text !== "Audio message"
+        ? message.text
+        : "Voice message";
+    }
     if (message.attachment) return message.attachment.name || message.text || "Document";
     return message.text || "No messages";
   }
 
   function renderAttachmentHtml(attachment) {
+    if (window.LuckyChatMedia?.renderMediaAttachment) {
+      return window.LuckyChatMedia.renderMediaAttachment(attachment, esc);
+    }
     if (!attachment?.url) return "";
     const url = esc(attachment.url);
     const name = esc(attachment.name || "Download file");
@@ -1081,6 +1094,8 @@
           !caption ||
           caption === "Photo" ||
           caption === "Video" ||
+          caption === "Voice message" ||
+          caption === "Audio message" ||
           /^File:\s/i.test(caption);
         const textHtml =
           caption && !(m.attachment && isAuto) ? `<div>${esc(caption)}</div>` : !m.attachment ? esc(caption) : "";
@@ -1127,6 +1142,62 @@
 
   threadFileClear?.addEventListener("click", () => clearThreadFile());
 
+  function adminSendJson(payload) {
+    if (!ws || ws.readyState !== 1) return false;
+    ws.send(JSON.stringify(payload));
+    return true;
+  }
+
+  const adminCall = window.LuckyChatMedia?.createCallController?.({
+    role: "admin",
+    getConversationId: () => activeId,
+    sendJson: adminSendJson,
+    localAudioEl: threadLocalAudio,
+    remoteAudioEl: threadRemoteAudio,
+    callBtn: threadCallBtn,
+    hangBtn: threadHangBtn,
+    setStatus: (t) => {
+      if (threadName && t) threadContact && (threadContact.hidden = false);
+      console.info("[call]", t);
+    },
+    callerName: () => "Support",
+    onIncoming: (msg, actions) => {
+      if (msg.conversationId && msg.conversationId !== activeId) {
+        openConvo(msg.conversationId).catch(() => {});
+      }
+      const ok = window.confirm(`${msg.name || "Player"} is calling. Accept?`);
+      if (ok) {
+        if (msg.conversationId) activeId = msg.conversationId;
+        actions.accept();
+      } else actions.reject();
+    },
+  });
+
+  window.LuckyChatMedia?.createVoiceController?.({
+    button: threadVoiceBtn,
+    setStatus: (t) => {
+      if (t) console.info("[voice]", t);
+    },
+    onRecorded: async (blob) => {
+      if (!activeId || !ws || ws.readyState !== 1) {
+        alert("Open a conversation first.");
+        return;
+      }
+      try {
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+        const attachment = await uploadThreadFile(file);
+        adminSendJson({
+          type: "message",
+          conversationId: activeId,
+          text: "Voice message",
+          attachment,
+        });
+      } catch (err) {
+        alert(err.message || "Could not send voice");
+      }
+    },
+  });
+
   threadForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const text = threadInput.value.trim();
@@ -1162,10 +1233,23 @@
         alert(msg.error || "Chat error");
         return;
       }
+      if (
+        msg.type === "call_invite" ||
+        msg.type === "call_accept" ||
+        msg.type === "call_reject" ||
+        msg.type === "call_end" ||
+        msg.type === "webrtc_signal"
+      ) {
+        adminCall?.handleServerEvent?.(msg);
+        return;
+      }
       if (msg.type === "message") {
         if (msg.conversationId === activeId) {
           activeMessages.push(msg.message);
           renderThread();
+        }
+        if (msg.message?.from === "customer") {
+          window.LuckyChatMedia?.playAlertSound?.();
         }
         await refreshChats();
       }
