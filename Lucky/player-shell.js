@@ -94,8 +94,15 @@
     const token = localStorage.getItem(TOKEN_KEY) || "";
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(path, { ...opts, headers });
+    const res = await fetch(path, { credentials: "include", ...opts, headers });
     const data = await res.json().catch(() => ({}));
+    if (data?.token) {
+      try {
+        localStorage.setItem(TOKEN_KEY, data.token);
+      } catch {
+        /* ignore */
+      }
+    }
     return { res, data };
   }
 
@@ -105,9 +112,13 @@
     } catch {
       /* ignore */
     }
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(PLAYER_KEY);
-    localStorage.removeItem(CHAT_KEY);
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(PLAYER_KEY);
+      localStorage.removeItem(CHAT_KEY);
+    } catch {
+      /* ignore */
+    }
     document.body.classList.remove("is-player");
     shell.hidden = true;
     if (typeof window.luckyShowWelcome === "function") {
@@ -134,55 +145,79 @@
 
   profileForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const btn = profileForm.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+    }
     const errEl = document.getElementById("set-profile-error");
     const okEl = document.getElementById("set-profile-ok");
     setMsg(errEl, "");
     setMsg(okEl, "");
-    const body = {
-      name: document.getElementById("set-name")?.value || "",
-      email: document.getElementById("set-email")?.value || "",
-      phone: document.getElementById("set-phone")?.value || "",
-    };
-    const { res, data } = await api("/api/player/profile", {
-      method: "PUT",
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      setMsg(errEl, data.error || "Could not save profile");
-      return;
+    try {
+      const body = {
+        name: document.getElementById("set-name")?.value || "",
+        email: document.getElementById("set-email")?.value || "",
+        phone: document.getElementById("set-phone")?.value || "",
+      };
+      const { res, data } = await api("/api/player/profile", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setMsg(errEl, data.error || "Could not save profile");
+        return;
+      }
+      if (data.player) {
+        localStorage.setItem(PLAYER_KEY, JSON.stringify(data.player));
+        refreshUserChip();
+        window.luckyUpdatePlayer?.(data.player);
+      }
+      let msg = "Profile saved.";
+      if (data.needsVerification) {
+        msg = data.message || "Verify your new email.";
+        if (data.devCode) msg += ` Code: ${data.devCode}`;
+      }
+      setMsg(okEl, msg);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
     }
-    if (data.player) {
-      localStorage.setItem(PLAYER_KEY, JSON.stringify(data.player));
-      refreshUserChip();
-      window.luckyUpdatePlayer?.(data.player);
-    }
-    let msg = "Profile saved.";
-    if (data.needsVerification) {
-      msg = data.message || "Verify your new email.";
-      if (data.devCode) msg += ` Code: ${data.devCode}`;
-    }
-    setMsg(okEl, msg);
   });
 
   passwordForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const btn = passwordForm.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+    }
     const errEl = document.getElementById("set-pass-error");
     const okEl = document.getElementById("set-pass-ok");
     setMsg(errEl, "");
     setMsg(okEl, "");
-    const { res, data } = await api("/api/player/password", {
-      method: "PUT",
-      body: JSON.stringify({
-        currentPassword: document.getElementById("set-pass-current")?.value || "",
-        newPassword: document.getElementById("set-pass-new")?.value || "",
-      }),
-    });
-    if (!res.ok) {
-      setMsg(errEl, data.error || "Could not update password");
-      return;
+    try {
+      const { res, data } = await api("/api/player/password", {
+        method: "PUT",
+        body: JSON.stringify({
+          currentPassword: document.getElementById("set-pass-current")?.value || "",
+          newPassword: document.getElementById("set-pass-new")?.value || "",
+        }),
+      });
+      if (!res.ok) {
+        setMsg(errEl, data.error || "Could not update password");
+        return;
+      }
+      passwordForm.reset();
+      setMsg(okEl, data.message || "Password updated.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
     }
-    passwordForm.reset();
-    setMsg(okEl, data.message || "Password updated.");
   });
 
   window.luckyPlayerShell = {

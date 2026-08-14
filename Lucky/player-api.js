@@ -4,7 +4,8 @@ const { dbEnabled, query, withTransaction } = require("./db");
 const { sendMail, makeVerifyCode, hashVerifyCode, brandEmailHtml } = require("./mail");
 
 const BCRYPT_ROUNDS = 12;
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 90;
+const PLAYER_COOKIE = "lucky_player_token";
 const VERIFY_MINUTES = 30;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -71,6 +72,67 @@ async function createSession(playerId) {
     expires.toISOString(),
   ]);
   return token;
+}
+
+function parseCookies(header) {
+  const out = {};
+  String(header || "")
+    .split(";")
+    .forEach((part) => {
+      const idx = part.indexOf("=");
+      if (idx < 0) return;
+      const key = part.slice(0, idx).trim();
+      const val = part.slice(idx + 1).trim();
+      if (!key) return;
+      try {
+        out[key] = decodeURIComponent(val);
+      } catch {
+        out[key] = val;
+      }
+    });
+  return out;
+}
+
+function cookieSecure(req) {
+  if (String(process.env.COOKIE_SECURE || "").trim() === "0") return false;
+  if (String(process.env.COOKIE_SECURE || "").trim() === "1") return true;
+  if (req?.secure) return true;
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
+  return proto === "https" || process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+}
+
+function setPlayerSessionCookie(res, token, req) {
+  const maxAge = SESSION_DAYS * 24 * 60 * 60;
+  const parts = [
+    `${PLAYER_COOKIE}=${encodeURIComponent(token)}`,
+    `Max-Age=${maxAge}`,
+    "Path=/",
+    "SameSite=Lax",
+    "HttpOnly",
+  ];
+  if (cookieSecure(req)) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function clearPlayerSessionCookie(res, req) {
+  const parts = [`${PLAYER_COOKIE}=`, "Max-Age=0", "Path=/", "SameSite=Lax", "HttpOnly"];
+  if (cookieSecure(req)) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function sendAuth(res, req, { token, player, extra = {} }) {
+  setPlayerSessionCookie(res, token, req);
+  return res.json({ ok: true, token, player, sessionDays: SESSION_DAYS, ...extra });
+}
+
+function readPlayerToken(req) {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    const bearer = header.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  const cookies = parseCookies(req.headers.cookie);
+  return String(cookies[PLAYER_COOKIE] || "").trim();
 }
 
 async function issueVerification(player, { reason = "verify" } = {}) {
@@ -151,8 +213,7 @@ async function playerAuth(req, res, next) {
     if (!dbEnabled()) {
       return res.status(503).json({ error: "Player database is not configured (DATABASE_URL)." });
     }
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    const token = readPlayerToken(req);
     if (!token) return res.status(401).json({ error: "Unauthorized" });
 
     const sess = await query(
@@ -164,6 +225,7 @@ async function playerAuth(req, res, next) {
     );
     const row = sess.rows[0];
     if (!row || new Date(row.expires_at).getTime() < Date.now()) {
+      clearPlayerSessionCookie(res, req);
       return res.status(401).json({ error: "Unauthorized" });
     }
     req.playerToken = token;
@@ -288,7 +350,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       if (!player) return res.status(404).json({ error: "Account not found" });
       if (player.email_verified) {
         const token = await createSession(player.id);
-        return res.json({ ok: true, token, player: publicPlayer(player) });
+        return sendAuth(res, req, { token, player: publicPlayer(player) });
       }
       if (
         !player.email_verify_code_hash ||
@@ -311,7 +373,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         [player.id]
       );
       const token = await createSession(player.id);
-      res.json({ ok: true, token, player: publicPlayer(updated.rows[0]) });
+      return sendAuth(res, req, { token, player: publicPlayer(updated.rows[0]) });
     } catch (err) {
       console.error("verify-email:", err.message || err);
       res.status(500).json({ error: "Verification failed" });
@@ -409,7 +471,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       );
       await query(`DELETE FROM player_sessions WHERE player_id = $1`, [player.id]);
       const token = await createSession(player.id);
-      res.json({ ok: true, token, player: publicPlayer(updated.rows[0]) });
+      return sendAuth(res, req, { token, player: publicPlayer(updated.rows[0]) });
     } catch (err) {
       console.error("reset-password:", err.message || err);
       res.status(500).json({ error: "Could not reset password" });
@@ -463,7 +525,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       }
 
       const token = await createSession(player.id);
-      res.json({ ok: true, token, player: publicPlayer(player) });
+      return sendAuth(res, req, { token, player: publicPlayer(player) });
     } catch (err) {
       console.error("login:", err.message || err);
       res.status(500).json({ error: "Login failed" });
@@ -473,8 +535,10 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
   app.post("/api/player/logout", requireDb, playerAuth, async (req, res) => {
     try {
       await query(`DELETE FROM player_sessions WHERE token = $1`, [req.playerToken]);
+      clearPlayerSessionCookie(res, req);
       res.json({ ok: true });
     } catch (err) {
+      clearPlayerSessionCookie(res, req);
       res.status(500).json({ error: "Logout failed" });
     }
   });
@@ -485,9 +549,14 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
        WHERE player_id = $1 AND status = 'available'`,
       [req.player.id]
     );
+    // Refresh cookie lifetime while the session is still valid.
+    setPlayerSessionCookie(res, req.playerToken, req);
     res.json({
+      ok: true,
+      token: req.playerToken,
       player: publicPlayer(req.player),
       referralSpins: Number(spins.rows[0]?.spins || 0),
+      sessionDays: SESSION_DAYS,
     });
   });
 
