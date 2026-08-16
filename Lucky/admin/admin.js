@@ -1343,7 +1343,8 @@
     }
     if (juwaBannerDetail) {
       const bits = [];
-      if (req.username) bits.push(`User: ${req.username}`);
+      const userLabel = req.username || (Array.isArray(req.usernames) && req.usernames[0]) || null;
+      if (userLabel) bits.push(`User: ${userLabel}`);
       if (req.amount != null) bits.push(`Amount: ${req.amount}`);
       if (req.missing?.length) bits.push(`Missing: ${req.missing.join(", ")}`);
       bits.push(req.reason || req.status);
@@ -1361,7 +1362,9 @@
       juwaModalStatus.hidden = true;
       juwaModalStatus.textContent = "";
     }
-    if (juwaModalUsername) juwaModalUsername.value = req.username || "";
+    if (juwaModalUsername) {
+      juwaModalUsername.value = req.username || (Array.isArray(req.usernames) && req.usernames[0]) || "";
+    }
     if (juwaModalAmount) juwaModalAmount.value = req.amount != null ? String(req.amount) : "";
     if (juwaModalSource) {
       juwaModalSource.value = `Conversation: ${req.conversationId || ""}\n${req.messageText || ""}`;
@@ -1377,9 +1380,9 @@
     }
   }
 
-  async function createJuwaFromMessage(message) {
-    if (!activeId || !message?.id || message.from !== "customer") return null;
-    const text = String(message.text || "");
+  async function createJuwaFromMessage(message, textOverride) {
+    if (!activeId || !message?.id) return null;
+    const text = String(textOverride || message.text || "");
     if (!/juwa/i.test(text)) return null;
     try {
       const data = await api("/api/admin/juwa/requests", {
@@ -1400,8 +1403,23 @@
 
   async function scanThreadForJuwa() {
     hideJuwaBanner();
-    const customers = [...activeMessages].reverse().filter((m) => m.from === "customer");
-    for (const m of customers.slice(0, 8)) {
+    const customers = [...activeMessages].filter((m) => m.from === "customer");
+    if (!customers.length) return;
+
+    // Prefer combined recent customer messages (username in one bubble, amount in another).
+    const recent = customers.slice(-6);
+    const combined = recent.map((m) => String(m.text || "").trim()).filter(Boolean).join("\n");
+    const anchor = recent[recent.length - 1];
+    if (anchor && /juwa/i.test(combined)) {
+      const req = await createJuwaFromMessage(anchor, combined);
+      if (req) {
+        // Prefill best username if server stored null but parse had candidates in reason — modal still editable
+        showJuwaBanner(req);
+        return;
+      }
+    }
+
+    for (const m of [...customers].reverse().slice(0, 8)) {
       const req = await createJuwaFromMessage(m);
       if (req) {
         showJuwaBanner(req);

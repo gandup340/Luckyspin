@@ -43,10 +43,11 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson })
       conversationId,
       messageId,
       messageText: text,
-      username: parsed.username,
+      username: parsed.username || (parsed.usernames && parsed.usernames[0]) || null,
       amount: parsed.amount,
       missing: parsed.missing,
       reason: parsed.reason,
+      usernames: parsed.usernames || [],
     });
 
     store.addAudit({
