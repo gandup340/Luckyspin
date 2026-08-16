@@ -1507,6 +1507,57 @@
       loadJuwaOps().catch(() => {});
     });
 
+    async function markAddedAndReply() {
+      if (!juwaActiveRequest?.id) return;
+      const username = String(juwaModalUsername?.value || "").trim();
+      const amount = Number(juwaModalAmount?.value);
+      if (!username || !Number.isFinite(amount) || amount <= 0) {
+        if (juwaModalError) {
+          juwaModalError.hidden = false;
+          juwaModalError.textContent = "Enter an exact username and a positive amount. Do not guess.";
+        }
+        return;
+      }
+      if (juwaModalError) juwaModalError.hidden = true;
+      const markBtn = document.getElementById("juwa-modal-mark-added");
+      const runBtn = document.getElementById("juwa-modal-confirm");
+      if (markBtn) markBtn.disabled = true;
+      if (runBtn) runBtn.disabled = true;
+      try {
+        const data = await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}/mark-added`, {
+          method: "POST",
+          body: JSON.stringify({ username, amount }),
+        });
+        juwaActiveRequest = data.request || juwaActiveRequest;
+        if (juwaModalStatus) {
+          juwaModalStatus.hidden = false;
+          juwaModalStatus.textContent = data.message || 'Marked added — replied "added" to player.';
+        }
+        showJuwaBanner(juwaActiveRequest);
+        await loadJuwaOps();
+        // Refresh open chat thread so admin sees the auto-reply
+        if (activeId) {
+          try {
+            await openConvo(activeId);
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (err) {
+        if (juwaModalError) {
+          juwaModalError.hidden = false;
+          juwaModalError.textContent = err.message || "Could not mark added";
+        }
+      } finally {
+        if (markBtn) markBtn.disabled = false;
+        if (runBtn) runBtn.disabled = false;
+      }
+    }
+
+    document.getElementById("juwa-modal-mark-added")?.addEventListener("click", () => {
+      markAddedAndReply().catch(() => {});
+    });
+
     document.getElementById("juwa-modal-confirm")?.addEventListener("click", async () => {
       if (!juwaActiveRequest?.id) return;
       const username = String(juwaModalUsername?.value || "").trim();
@@ -1520,7 +1571,9 @@
       }
       if (juwaModalError) juwaModalError.hidden = true;
       const btn = document.getElementById("juwa-modal-confirm");
+      const markBtn = document.getElementById("juwa-modal-mark-added");
       if (btn) btn.disabled = true;
+      if (markBtn) markBtn.disabled = true;
       try {
         await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}/confirm`, {
           method: "POST",
@@ -1545,14 +1598,22 @@
               clearInterval(juwaPollTimer);
               juwaPollTimer = null;
               if (btn) btn.disabled = false;
+              if (markBtn) markBtn.disabled = false;
               if (req.status === "success") {
                 showJuwaBanner(req);
                 await loadJuwaOps();
+                if (activeId) {
+                  try {
+                    await openConvo(activeId);
+                  } catch {
+                    /* ignore */
+                  }
+                }
               }
               if (req.status === "awaiting_captcha" && juwaModalError) {
                 juwaModalError.hidden = false;
                 juwaModalError.textContent =
-                  "CAPTCHA required. Complete it in the opened browser, then click Confirm & run again.";
+                  "CAPTCHA required on the server browser. Prefer Mark added & reply after you add funds yourself on Juwa.";
               }
             }
           } catch {
@@ -1565,6 +1626,7 @@
           juwaModalError.textContent = err.message || "Could not start automation";
         }
         if (btn) btn.disabled = false;
+        if (markBtn) markBtn.disabled = false;
       }
     });
   }

@@ -2,12 +2,38 @@ const { parseJuwaFundRequest } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
 const { runJuwaAddFunds, juwaConfig } = require("./juwa-automation");
 
-function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson }) {
+const PLAYER_ADDED_REPLY = "added";
+
+function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, postSupportReply }) {
   const store = createJuwaStore({ dataDir, readJson, writeJson });
   const running = new Set();
 
   function actorName(req) {
     return req.adminUser?.username || req.adminUser?.name || "admin";
+  }
+
+  async function replyAddedToPlayer(row, admin) {
+    if (!row?.conversationId || typeof postSupportReply !== "function") {
+      return { ok: false, error: "No conversation to reply" };
+    }
+    if (row.playerRepliedAt) {
+      return { ok: true, skipped: true };
+    }
+    const result = await postSupportReply(row.conversationId, PLAYER_ADDED_REPLY);
+    if (result.ok) {
+      store.updateRequest(row.id, { playerRepliedAt: Date.now() });
+      store.addAudit({
+        type: "player_replied",
+        requestId: row.id,
+        admin: admin || "system",
+        username: row.username,
+        amount: row.amount,
+        status: "success",
+        conversationId: row.conversationId,
+        message: `Auto-replied "${PLAYER_ADDED_REPLY}" to player`,
+      });
+    }
+    return result;
   }
 
   app.get("/api/admin/juwa/status", auth, (_req, res) => {
@@ -78,8 +104,71 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson })
   });
 
   /**
+   * After funds are added on Juwa (manually or by automation): mark success and reply "added".
+   * Use this on Render when Playwright/CAPTCHA cannot finish.
+   */
+  app.post("/api/admin/juwa/requests/:id/mark-added", auth, async (req, res) => {
+    const row = store.getRequest(req.params.id);
+    if (!row) return res.status(404).json({ error: "Request not found" });
+    if (row.status === "success" && row.playerRepliedAt) {
+      return res.json({ ok: true, request: row, replied: true, message: "Already marked and replied." });
+    }
+
+    let username = String(req.body?.username || row.username || "").trim();
+    let amount = req.body?.amount != null ? Number(req.body.amount) : row.amount;
+    if (!username || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        error: "Need an exact Juwa username and a positive amount before marking added.",
+        request: row,
+      });
+    }
+    amount = Math.round(amount * 100) / 100;
+    const admin = actorName(req);
+
+    store.updateRequest(row.id, {
+      username,
+      amount,
+      status: "success",
+      confirmedBy: admin,
+      confirmedAt: Date.now(),
+      missing: [],
+      error: "",
+      reason: "Marked added by admin",
+      result: { ok: true, status: "success", detail: "Marked added by admin (manual)" },
+    });
+    store.addAudit({
+      type: "marked_added",
+      requestId: row.id,
+      admin,
+      username,
+      amount,
+      status: "success",
+      conversationId: row.conversationId,
+      message: "Admin marked funds added",
+    });
+
+    const fresh = store.getRequest(row.id);
+    const reply = await replyAddedToPlayer(fresh, admin);
+    if (!reply.ok && !reply.skipped) {
+      return res.status(500).json({
+        ok: false,
+        error: reply.error || "Marked added but failed to reply to player",
+        request: store.getRequest(row.id),
+      });
+    }
+
+    res.json({
+      ok: true,
+      request: store.getRequest(row.id),
+      replied: true,
+      message: `Marked added and replied "${PLAYER_ADDED_REPLY}" to player.`,
+    });
+  });
+
+  /**
    * Admin confirms in Lucky UI → only then run Juwa automation.
    * Optional overrides for username/amount when clarifying ambiguous chat.
+   * On success, automatically replies "added" to the player chat.
    */
   app.post("/api/admin/juwa/requests/:id/confirm", auth, async (req, res) => {
     const row = store.getRequest(req.params.id);
@@ -142,7 +231,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson })
       });
 
       if (result.ok) {
-        const updated = store.updateRequest(row.id, {
+        store.updateRequest(row.id, {
           status: "success",
           result,
           error: "",
@@ -159,7 +248,12 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson })
           message: result.detail || "Juwa submit ok",
         });
         console.log(`[juwa] success request=${row.id} user=${username} amount=${amount} by=${admin}`);
-        return updated;
+        const fresh = store.getRequest(row.id);
+        const reply = await replyAddedToPlayer(fresh, admin);
+        if (!reply.ok && !reply.skipped) {
+          console.warn(`[juwa] success but player reply failed: ${reply.error}`);
+        }
+        return;
       }
 
       const status = result.status === "awaiting_captcha" ? "awaiting_captcha" : "failed";
@@ -221,4 +315,4 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson })
   return { store, parseJuwaFundRequest };
 }
 
-module.exports = { mountJuwaApi };
+module.exports = { mountJuwaApi, PLAYER_ADDED_REPLY };

@@ -34,6 +34,7 @@ function createJuwaStore({ dataDir, writeJson, readJson }) {
       updatedAt: row.updatedAt,
       confirmedBy: row.confirmedBy || null,
       confirmedAt: row.confirmedAt || null,
+      playerRepliedAt: row.playerRepliedAt || null,
       error: row.error || "",
       result: row.result || null,
     };

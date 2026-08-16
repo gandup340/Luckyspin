@@ -807,6 +807,56 @@ async function sendFacebookMessage(psid, text) {
   return data;
 }
 
+/** Post an admin/support chat message into a conversation (site + optional FB + push). */
+async function postSupportReply(conversationId, text) {
+  const id = String(conversationId || "");
+  const body = String(text || "").trim().slice(0, 2000);
+  if (!id || !body) return { ok: false, error: "conversationId and text required" };
+
+  const data = getChats();
+  const convo = data.conversations.find((c) => c.id === id);
+  if (!convo) return { ok: false, error: "Conversation not found" };
+
+  const entry = {
+    id: crypto.randomUUID(),
+    from: "admin",
+    text: body,
+    at: Date.now(),
+  };
+
+  if (convo.channel === "facebook") {
+    if (!convo.psid || !FACEBOOK_ENABLED) {
+      return { ok: false, error: "Facebook Messenger is not configured for this chat." };
+    }
+    try {
+      await sendFacebookMessage(convo.psid, entry.text);
+    } catch (err) {
+      return { ok: false, error: err.message || "Could not send Messenger reply." };
+    }
+  }
+
+  convo.messages.push(entry);
+  convo.updatedAt = Date.now();
+  saveChats(data);
+
+  broadcast(
+    { type: "message", conversationId: id, message: entry },
+    (s) => (s.role === "customer" && s.conversationId === id) || s.role === "admin"
+  );
+
+  sendPushToTargets({
+    title: "LUCKY VIPS GAME Support",
+    body: body.slice(0, 140),
+    url: "/",
+    tag: `chat-${id}`,
+    conversationId: id,
+    email: convo.email || "",
+    data: { conversationId: id, type: "chat_message" },
+  }).catch((err) => console.warn("chat push:", err?.message || err));
+
+  return { ok: true, message: entry };
+}
+
 async function fetchFacebookPageIdentity() {
   if (!FACEBOOK_PAGE_ACCESS_TOKEN) return null;
   try {
@@ -1050,7 +1100,14 @@ const apiLimiter = rateLimit({
 });
 
 mountPlayerApi(app, { auth, requireAdmin });
-mountJuwaApi(app, { auth, requireAdmin, dataDir: DATA_DIR, readJson, writeJson });
+mountJuwaApi(app, {
+  auth,
+  requireAdmin,
+  dataDir: DATA_DIR,
+  readJson,
+  writeJson,
+  postSupportReply,
+});
 
 app.get("/api/facebook/webhook", (req, res) => {
   const mode = String(req.query["hub.mode"] || "");
