@@ -12,28 +12,43 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     return req.adminUser?.username || req.adminUser?.name || "admin";
   }
 
-  async function replyAddedToPlayer(row, admin) {
+  function shortError(err) {
+    return String(err || "unknown error").replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  async function replyToPlayerChat(row, text, admin, auditType) {
     if (!row?.conversationId || typeof postSupportReply !== "function") {
       return { ok: false, error: "No conversation to reply" };
     }
-    if (row.playerRepliedAt) {
-      return { ok: true, skipped: true };
-    }
-    const result = await postSupportReply(row.conversationId, PLAYER_ADDED_REPLY);
+    const result = await postSupportReply(row.conversationId, text);
     if (result.ok) {
-      store.updateRequest(row.id, { playerRepliedAt: Date.now() });
+      const patch = {};
+      if (auditType === "player_replied") patch.playerRepliedAt = Date.now();
+      if (auditType === "player_error_replied") patch.playerErrorRepliedAt = Date.now();
+      if (Object.keys(patch).length) store.updateRequest(row.id, patch);
       store.addAudit({
-        type: "player_replied",
+        type: auditType || "player_chat_reply",
         requestId: row.id,
         admin: admin || "system",
         username: row.username,
         amount: row.amount,
-        status: "success",
+        status: row.status,
         conversationId: row.conversationId,
-        message: `Auto-replied "${PLAYER_ADDED_REPLY}" to player`,
+        message: `Chat reply: ${String(text).slice(0, 180)}`,
       });
     }
     return result;
+  }
+
+  async function replyAddedToPlayer(row, admin) {
+    if (row.playerRepliedAt) return { ok: true, skipped: true };
+    return replyToPlayerChat(row, PLAYER_ADDED_REPLY, admin, "player_replied");
+  }
+
+  async function replyNotAddedErrorToPlayer(row, admin, errorText) {
+    const msg = `not added: ${shortError(errorText)}`;
+    // Always post latest failure reason (admin/player need to see why).
+    return replyToPlayerChat(row, msg, admin, "player_error_replied");
   }
 
   app.get("/api/admin/juwa/status", auth, (_req, res) => {
@@ -117,8 +132,12 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     let username = String(req.body?.username || row.username || "").trim();
     let amount = req.body?.amount != null ? Number(req.body.amount) : row.amount;
     if (!username || !Number.isFinite(amount) || amount <= 0) {
+      const err = "Need an exact Juwa username and a positive amount before marking added.";
+      if (row.conversationId) {
+        await replyNotAddedErrorToPlayer(row, actorName(req), err).catch(() => {});
+      }
       return res.status(400).json({
-        error: "Need an exact Juwa username and a positive amount before marking added.",
+        error: err,
         request: row,
       });
     }
@@ -274,6 +293,15 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         message: result.error || "Failed",
       });
       console.warn(`[juwa] ${status} request=${row.id}: ${result.error || "failed"}`);
+      const freshFail = store.getRequest(row.id);
+      const errReply = await replyNotAddedErrorToPlayer(
+        freshFail,
+        admin,
+        result.error || status
+      );
+      if (!errReply.ok) {
+        console.warn(`[juwa] failed to post error to chat: ${errReply.error}`);
+      }
     } catch (err) {
       store.updateRequest(row.id, {
         status: "failed",
@@ -290,6 +318,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         message: err?.message || "crash",
       });
       console.warn("[juwa] crash:", err?.message || err);
+      const freshCrash = store.getRequest(row.id);
+      await replyNotAddedErrorToPlayer(freshCrash, admin, err?.message || "Automation crashed").catch(
+        () => {}
+      );
     } finally {
       running.delete(row.id);
     }

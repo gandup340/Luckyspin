@@ -1594,12 +1594,12 @@
               juwaModalStatus.hidden = false;
               juwaModalStatus.textContent = `${req.status}${req.error ? ` — ${req.error}` : req.reason ? ` — ${req.reason}` : ""}`;
             }
-            if (["success", "failed", "awaiting_captcha", "cancelled"].includes(req.status)) {
+              if (["success", "failed", "awaiting_captcha", "cancelled"].includes(req.status)) {
               clearInterval(juwaPollTimer);
               juwaPollTimer = null;
               if (btn) btn.disabled = false;
               if (markBtn) markBtn.disabled = false;
-              if (req.status === "success") {
+              if (req.status === "success" || req.status === "failed" || req.status === "awaiting_captcha") {
                 showJuwaBanner(req);
                 await loadJuwaOps();
                 if (activeId) {
@@ -1610,10 +1610,14 @@
                   }
                 }
               }
+              if (req.status === "failed" && juwaModalError) {
+                juwaModalError.hidden = false;
+                juwaModalError.textContent = req.error || "not added — see chat for details";
+              }
               if (req.status === "awaiting_captcha" && juwaModalError) {
                 juwaModalError.hidden = false;
                 juwaModalError.textContent =
-                  "CAPTCHA required on the server browser. Prefer Mark added & reply after you add funds yourself on Juwa.";
+                  "CAPTCHA required. Use Mark added & reply after you add funds on Juwa (error also posted in chat).";
               }
             }
           } catch {
