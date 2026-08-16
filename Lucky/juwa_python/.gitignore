@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+captcha_tests/
+captcha_last.png
+captcha_solver.ipynb
+latest_logs/
+*.png

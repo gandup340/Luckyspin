@@ -1,0 +1,7 @@
+playwright>=1.54.0
+requests>=2.32.0
+pillow>=10.0.0
+pytesseract>=0.3.10
+opencv-python-headless>=4.8.0
+numpy>=1.26.0
+ddddocr>=1.0.6

@@ -85,6 +85,18 @@ function createJuwaStore({ dataDir, writeJson, readJson }) {
     return { ok: true, request: publicRequest(row), reused: false };
   }
 
+  function findOpenByConversation(conversationId) {
+    const cid = String(conversationId || "");
+    if (!cid) return null;
+    const data = load();
+    const row = data.requests.find(
+      (r) =>
+        r.conversationId === cid &&
+        ["needs_info", "pending_review"].includes(r.status)
+    );
+    return publicRequest(row);
+  }
+
   function getRequest(id) {
     const data = load();
     return publicRequest(data.requests.find((r) => r.id === id));
@@ -127,6 +139,7 @@ function createJuwaStore({ dataDir, writeJson, readJson }) {
 
   return {
     createRequest,
+    findOpenByConversation,
     getRequest,
     listRequests,
     updateRequest,

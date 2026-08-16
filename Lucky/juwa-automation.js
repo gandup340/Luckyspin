@@ -1,9 +1,12 @@
 /**
  * Juwa agent portal automation (Playwright).
  * - Credentials only from env
- * - Never bypasses CAPTCHA; waits for human if challenged
- * - Separated from chat parsing for independent testing
+ * - Optional Python bridge (JUWA_PYTHON_BRIDGE=1) for YOUR captcha code
+ * - Node path never auto-solves CAPTCHA; waits for human if challenged
  */
+
+const { spawn } = require("child_process");
+const path = require("path");
 
 function juwaConfig() {
   return {
@@ -12,9 +15,14 @@ function juwaConfig() {
     userMgmtUrl: String(process.env.JUWA_USER_MGMT_URL || "https://ht.juwa777.com/userManagement").trim(),
     username: String(process.env.JUWA_AGENT_USERNAME || "").trim(),
     password: String(process.env.JUWA_AGENT_PASSWORD || ""),
-    headed: String(process.env.JUWA_HEADED || "1").trim() !== "0",
+    headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
     timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 180000),
     captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 300000),
+    pythonBridge: String(process.env.JUWA_PYTHON_BRIDGE || "1").trim() !== "0",
+    pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
+    pythonScript: String(
+      process.env.JUWA_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "juwa_login_add.py")
+    ).trim(),
   };
 }
 
@@ -34,6 +42,88 @@ async function loadPlaywright() {
     err.code = "PLAYWRIGHT_MISSING";
     throw err;
   }
+}
+
+/**
+ * Run Lucky/juwa_python/juwa_login_add.py (your captcha lives in solve_captcha.py).
+ */
+function runJuwaPythonBridge(job, cfg, log) {
+  return new Promise((resolve) => {
+    const payload = {
+      targetUsername: String(job.username || "").trim(),
+      amount: Number(job.amount),
+      loginUrl: cfg.loginUrl,
+      userMgmtUrl: cfg.userMgmtUrl,
+      agentUsername: cfg.username,
+      agentPassword: cfg.password,
+      headed: cfg.headed,
+      timeoutMs: cfg.timeoutMs,
+    };
+
+    log(`Python bridge: ${cfg.pythonBin} ${path.basename(cfg.pythonScript)}`);
+    const child = spawn(cfg.pythonBin, [cfg.pythonScript], {
+      cwd: path.dirname(cfg.pythonScript),
+      env: { ...process.env },
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+    }, Math.max(cfg.timeoutMs, cfg.captchaWaitMs) + 15000);
+
+    child.stdout.on("data", (buf) => {
+      stdout += String(buf);
+    });
+    child.stderr.on("data", (buf) => {
+      stderr += String(buf);
+      const line = String(buf).trim();
+      if (line) log(line.slice(0, 200));
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(killTimer);
+      resolve({
+        ok: false,
+        status: "python_spawn_failed",
+        error: err.message || "Could not start Python bridge",
+      });
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(killTimer);
+      const lines = stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const last = lines[lines.length - 1] || "";
+      try {
+        const parsed = JSON.parse(last);
+        if (parsed && typeof parsed === "object") {
+          resolve(parsed);
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      resolve({
+        ok: false,
+        status: "python_bad_output",
+        error:
+          last.slice(0, 240) ||
+          stderr.slice(0, 240) ||
+          `Python bridge exited with code ${code} and no JSON result`,
+      });
+    });
+
+    child.stdin.write(JSON.stringify(payload));
+    child.stdin.end();
+  });
 }
 
 function looksLikeCaptcha(pageContent, url) {
@@ -85,6 +175,11 @@ async function runJuwaAddFunds(job) {
   const amount = Number(job.amount);
   if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
     return { ok: false, status: "invalid", error: "Valid Juwa username and amount are required." };
+  }
+
+  if (cfg.pythonBridge) {
+    log("Using Python Juwa bridge (captcha + recharge)");
+    return runJuwaPythonBridge(job, cfg, log);
   }
 
   const playwright = await loadPlaywright();

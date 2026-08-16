@@ -1,6 +1,6 @@
 {
   "name": "lucky-vips-game",
-  "version": "1.0.0.15",
+  "version": "1.0.0.16",
   "private": true,
   "description": "LUCKY VIPS GAME casino portal with admin panel, support chat, and Facebook Messenger",
   "main": "server.js",
@@ -8,7 +8,8 @@
     "start": "node server.js",
     "seed": "node seed.js",
     "dev": "node server.js",
-    "juwa:install-browser": "npx playwright install chromium"
+    "juwa:install-browser": "npx playwright install chromium",
+    "juwa:python-setup": "python -m pip install -r juwa_python/requirements.txt && python -m playwright install chromium"
   },
   "engines": {
     "node": ">=18"

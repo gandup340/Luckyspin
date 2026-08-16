@@ -1,8 +1,11 @@
-const { parseJuwaFundRequest } = require("./juwa-parser");
+const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
 const { runJuwaAddFunds, juwaConfig } = require("./juwa-automation");
 
 const PLAYER_ADDED_REPLY = "added";
+const ASK_USERNAME =
+  "What is your Juwa username? Reply with your account (example: vvkj1555).";
+const ASK_AMOUNT = "How much should we add? Reply with the amount (example: 20).";
 
 function autoProcessEnabled() {
   const raw = String(process.env.JUWA_AUTO_PROCESS || "1").trim();
@@ -179,46 +182,150 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     }
   }
 
+  async function replyAskPlayer(row, text, admin) {
+    return replyToPlayerChat(row, text, admin || "auto", "player_asked");
+  }
+
+  function addingNowText(username, amount) {
+    return `Adding ${amount} to ${username} now. I'll reply when it's done.`;
+  }
+
+  async function startAddIfReady(row, admin, auditMessage) {
+    const username = String(row.username || "").trim();
+    const amount = Number(row.amount);
+    if (!username || !Number.isFinite(amount) || amount <= 0) return row;
+
+    if (!autoProcessEnabled()) {
+      await replyAskPlayer(
+        row,
+        "Got it — waiting for support to confirm (auto-process off).",
+        admin
+      );
+      return store.getRequest(row.id);
+    }
+    const cfg = juwaConfig();
+    if (!cfg.enabled) {
+      await replyNotAddedErrorToPlayer(row, admin, "Juwa automation disabled on server");
+      return store.getRequest(row.id);
+    }
+    if (!cfg.username || !cfg.password) {
+      await replyNotAddedErrorToPlayer(row, admin, "Juwa agent credentials not configured");
+      return store.getRequest(row.id);
+    }
+
+    await replyAskPlayer(row, addingNowText(username, amount), admin);
+    executeJuwaAdd(row.id, {
+      username,
+      amount,
+      admin: admin || "auto",
+      auditMessage: auditMessage || "Auto-started from customer chat",
+    }).catch((err) => console.warn("[juwa] auto execute:", err?.message || err));
+    return store.getRequest(row.id);
+  }
+
   /**
-   * Customer chat → parse → add on Juwa (when clear) → reply added / not added: error.
-   * Safe to call fire-and-forget from websocket / Facebook ingest.
+   * Customer chat → parse → ask for missing username/amount → add on Juwa.
    */
   async function handleCustomerJuwaMessage({ conversationId, messageId, text, recentText }) {
     const conversation = String(conversationId || "");
     const msgId = String(messageId || "");
-    const combined = String(recentText || text || "").trim();
     const single = String(text || "").trim();
-    if (!conversation || (!combined && !single)) return null;
+    if (!conversation || !single) return null;
 
-    let parsed = parseJuwaFundRequest(combined);
-    if (!parsed.intent && single && single !== combined) {
-      parsed = parseJuwaFundRequest(single);
+    let parsed = parseJuwaFundRequest(single);
+
+    const open = store.findOpenByConversation(conversation);
+
+    if (!parsed.intent) {
+      if (!open) return null;
+      const followUser = parseFollowUpUsername(single);
+      const followAmt = parseFollowUpAmount(single);
+      if (!followUser && followAmt == null) return null;
+
+      const username = followUser || open.username;
+      const amount = followAmt != null ? followAmt : open.amount;
+      const missing = [];
+      if (!username) missing.push("username");
+      if (!(Number(amount) > 0)) missing.push("amount");
+
+      store.updateRequest(open.id, {
+        username: username || null,
+        amount: Number(amount) > 0 ? amount : open.amount,
+        missing,
+        status: username && Number(amount) > 0 ? "pending_review" : "needs_info",
+        reason: missing.length ? `Need: ${missing.join(", ")}` : "Ready to add on Juwa",
+        messageId: msgId || open.messageId,
+        messageText: `${open.messageText || ""}\n${single}`.trim().slice(0, 2000),
+        error: "",
+      });
+      const row = store.getRequest(open.id);
+      store.addAudit({
+        type: "follow_up",
+        requestId: row.id,
+        admin: "auto",
+        username: row.username,
+        amount: row.amount,
+        status: row.status,
+        conversationId: conversation,
+        message: "Merged follow-up from customer chat",
+      });
+      if (missing.includes("username")) {
+        await replyAskPlayer(row, ASK_USERNAME, "auto");
+        return store.getRequest(row.id);
+      }
+      if (missing.includes("amount")) {
+        await replyAskPlayer(row, ASK_AMOUNT, "auto");
+        return store.getRequest(row.id);
+      }
+      return startAddIfReady(row, "auto", "Completed from chat follow-up");
     }
-    if (!parsed.intent) return null;
 
     return handleParsedCustomerRequest({
       conversationId: conversation,
       messageId: msgId,
-      text: combined || single,
+      text: single,
       parsed,
+      open,
     });
   }
 
-  async function handleParsedCustomerRequest({ conversationId, messageId, text, parsed }) {
-    const created = store.createRequest({
-      ok: parsed.ok,
-      conversationId,
-      messageId,
-      messageText: text,
-      username: parsed.username || (parsed.usernames && parsed.usernames[0]) || null,
-      amount: parsed.amount,
-      missing: parsed.missing,
-      reason: parsed.reason,
-      usernames: parsed.usernames || [],
-    });
+  async function handleParsedCustomerRequest({ conversationId, messageId, text, parsed, open }) {
+    const username = parsed.username || (parsed.usernames && parsed.usernames[0]) || open?.username || null;
+    const amount = parsed.amount != null ? parsed.amount : open?.amount;
+    const missing = [];
+    if (!username) missing.push("username");
+    if (!(Number(amount) > 0)) missing.push("amount");
+    const ready = Boolean(username && Number(amount) > 0);
 
-    const row = created.request;
-    if (!row) return null;
+    let row;
+    if (open) {
+      store.updateRequest(open.id, {
+        username: username || null,
+        amount: Number(amount) > 0 ? amount : null,
+        missing,
+        usernames: parsed.usernames || open.usernames || [],
+        reason: ready ? "Ready to add on Juwa" : `Need: ${missing.join(", ")}`,
+        status: ready ? "pending_review" : "needs_info",
+        messageId: messageId || open.messageId,
+        messageText: text,
+        error: "",
+      });
+      row = store.getRequest(open.id);
+    } else {
+      const created = store.createRequest({
+        ok: ready,
+        conversationId,
+        messageId,
+        messageText: text,
+        username,
+        amount: Number(amount) > 0 ? amount : null,
+        missing,
+        reason: ready ? "Ready to add on Juwa" : `Need: ${missing.join(", ")}`,
+        usernames: parsed.usernames || [],
+      });
+      row = created.request;
+      if (!row) return null;
+    }
 
     store.addAudit({
       type: "request_created",
@@ -228,53 +335,21 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       amount: row.amount,
       status: row.status,
       conversationId,
-      message: created.reused ? "Reused from customer chat" : "Created from customer chat",
+      message: open ? "Updated from customer chat" : "Created from customer chat",
     });
 
-    // Already completed earlier — remind player
     if (row.status === "success") {
       await replyAddedToPlayer(row, "auto");
       return row;
     }
 
-    if (!parsed.ok || !row.username || !(Number(row.amount) > 0)) {
-      const missing = (parsed.missing || []).join(", ") || "username or amount";
-      await replyNotAddedErrorToPlayer(
-        row,
-        "auto",
-        `send juwa username and amount (example: add to juwa vvkj1555 50). Missing: ${missing}`
-      );
+    if (!ready) {
+      if (missing.includes("username")) await replyAskPlayer(row, ASK_USERNAME, "auto");
+      else if (missing.includes("amount")) await replyAskPlayer(row, ASK_AMOUNT, "auto");
       return store.getRequest(row.id);
     }
 
-    if (!autoProcessEnabled()) {
-      await replyNotAddedErrorToPlayer(
-        row,
-        "auto",
-        "waiting for support to confirm (auto-process off)"
-      );
-      return store.getRequest(row.id);
-    }
-
-    const cfg = juwaConfig();
-    if (!cfg.enabled) {
-      await replyNotAddedErrorToPlayer(row, "auto", "Juwa automation disabled on server");
-      return store.getRequest(row.id);
-    }
-    if (!cfg.username || !cfg.password) {
-      await replyNotAddedErrorToPlayer(row, "auto", "Juwa agent credentials not configured");
-      return store.getRequest(row.id);
-    }
-
-    // Don't block chat thread — run add in background
-    executeJuwaAdd(row.id, {
-      username: row.username,
-      amount: row.amount,
-      admin: "auto",
-      auditMessage: "Auto-started from customer chat",
-    }).catch((err) => console.warn("[juwa] auto execute:", err?.message || err));
-
-    return store.getRequest(row.id);
+    return startAddIfReady(row, "auto", "Auto-started from customer chat");
   }
 
   app.get("/api/admin/juwa/status", auth, (_req, res) => {
@@ -282,6 +357,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     res.json({
       automationEnabled: cfg.enabled,
       autoProcess: autoProcessEnabled(),
+      pythonBridge: Boolean(cfg.pythonBridge),
       credentialsConfigured: Boolean(cfg.username && cfg.password),
       loginUrl: cfg.loginUrl,
       userMgmtUrl: cfg.userMgmtUrl,

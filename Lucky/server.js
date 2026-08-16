@@ -1123,7 +1123,6 @@ function recentCustomerJuwaText(convo, limit = 6) {
 function triggerJuwaFromCustomerMessage(convo, entry) {
   if (!juwaApi?.handleCustomerJuwaMessage || !convo?.id || !entry?.id) return;
   const text = String(entry.text || "");
-  if (!/juwa/i.test(text) && !/juwa/i.test(recentCustomerJuwaText(convo))) return;
   juwaApi
     .handleCustomerJuwaMessage({
       conversationId: convo.id,

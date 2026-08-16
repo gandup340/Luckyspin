@@ -13,6 +13,7 @@ const STOP_WORDS = new Set(
     "funds",
     "balance",
     "deposit",
+    "recharge",
     "money",
     "dollar",
     "dollars",
@@ -132,14 +133,12 @@ function extractAmounts(text) {
   const t = normalizeText(text);
   const amounts = [];
   const patterns = [
-    /(?:add|deposit|fund|funds|load|put|top\s*up|credit)\s*(?:me\s*)?(?:\$)?\s*(\d+(?:\.\d{1,2})?)/gi,
+    /(?:add|deposit|fund|funds|load|put|top\s*up|credit|recharge)\s*(?:me\s*)?(?:\$)?\s*(\d+(?:\.\d{1,2})?)/gi,
     /(?:\$)\s*(\d+(?:\.\d{1,2})?)/g,
     /\b(\d+(?:\.\d{1,2})?)\s*(?:\$|usd|dollars?|bucks)\b/gi,
     /\bamount\s*[:=]?\s*(\d+(?:\.\d{1,2})?)/gi,
-    // "juwa USER 50" / "add to juwa USER 50"
     /\bjuwa\b(?:\s+\S+){0,4}\s+(\d+(?:\.\d{1,2})?)\b/gi,
-    // trailing amount on a juwa line
-    /\b(?:add|juwa|deposit|fund).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
+    /\b(?:add|juwa|deposit|fund|recharge).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
   ];
   for (const re of patterns) {
     for (const m of t.matchAll(re)) {
@@ -148,7 +147,7 @@ function extractAmounts(text) {
     }
   }
   // Last-token bare number if message mentions juwa/add and a username-like token
-  if (/\bjuwa\b/i.test(t) || /\b(add|deposit|fund)\b/i.test(t)) {
+  if (/\bjuwa\b/i.test(t) || /\b(add|deposit|fund|recharge)\b/i.test(t)) {
     const last = t.match(/(?:^|\s)(\d+(?:\.\d{1,2})?)(?:\s*[!.]*)?$/);
     if (last) {
       const a = parseAmount(last[1]);
@@ -159,15 +158,41 @@ function extractAmounts(text) {
 }
 
 function looksLikeJuwaFundRequest(text) {
-  const t = normalizeText(text).toLowerCase();
-  if (!/\bjuwa\b/.test(t)) return false;
-  return (
-    /\b(add|deposit|fund|funds|load|top\s*up|credit|balance|put)\b/.test(t) ||
-    /\$\s*\d/.test(t) ||
-    /\d+(?:\.\d{1,2})?\s*(\$|usd|dollars?)/.test(t) ||
-    // "juwa vvkj1555 50"
-    /\bjuwa\b.+\d/.test(t)
-  );
+  const raw = normalizeText(text);
+  const t = raw.toLowerCase();
+  const amounts = extractAmounts(raw);
+  const users = extractUsernames(raw).filter(isGameStyleId);
+  const hasVerb = /\b(add|deposit|fund|funds|load|top\s*up|credit|recharge|balance|put)\b/.test(t);
+
+  if (/\bjuwa\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
+  if (hasVerb && amounts.length) return true;
+  if (hasVerb && users.length) return true;
+  if (users.length && amounts.length) return true;
+  return false;
+}
+
+function parseFollowUpUsername(text) {
+  const raw = normalizeText(text);
+  if (!raw) return null;
+  if (isGameStyleId(raw) || (isPlausibleUsername(raw) && raw.split(/\s+/).length === 1)) {
+    return raw;
+  }
+  if (raw.split(/\s+/).length > 6) return null;
+  const picked = pickBestUsername(extractUsernames(raw));
+  if (picked.username && extractAmounts(raw).length === 0) return picked.username;
+  return null;
+}
+
+function parseFollowUpAmount(text) {
+  const raw = normalizeText(text).replace(/[!.]+$/g, "").trim();
+  if (!raw) return null;
+  const direct = parseAmount(raw.replace(/^\$/, ""));
+  if (direct != null) return direct;
+  const amounts = extractAmounts(raw);
+  if (amounts.length === 1 && extractUsernames(raw).filter(isGameStyleId).length === 0) {
+    return amounts[0];
+  }
+  return null;
 }
 
 function parseJuwaFundRequest(text) {
@@ -211,9 +236,7 @@ function parseJuwaFundRequest(text) {
     missing,
     usernames: picked.usernames.length ? picked.usernames : usernamesRaw,
     amounts,
-    reason: ok
-      ? "Ready for admin review"
-      : `Need admin verification: ${missing.join(", ") || "unclear request"}`,
+    reason: ok ? "Ready to add on Juwa" : `Need: ${missing.join(", ") || "unclear request"}`,
   };
 }
 
@@ -233,6 +256,8 @@ module.exports = {
   extractAmounts,
   pickBestUsername,
   fingerprintRequest,
+  parseFollowUpUsername,
+  parseFollowUpAmount,
   looksLikeJuwaFundRequest,
   isGameStyleId,
 };
