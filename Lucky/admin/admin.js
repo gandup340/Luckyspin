@@ -1438,7 +1438,9 @@
         "juwa-ops-status",
         status.automationEnabled
           ? status.credentialsConfigured
-            ? "Automation enabled"
+            ? status.autoProcess === false
+              ? "Automation on — auto-process off"
+              : "Automation enabled (auto from customer chat)"
             : "Automation enabled — set JUWA_AGENT_USERNAME / JUWA_AGENT_PASSWORD on server"
           : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1)",
         !status.automationEnabled || !status.credentialsConfigured

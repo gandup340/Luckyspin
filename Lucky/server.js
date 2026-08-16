@@ -1029,6 +1029,8 @@ async function ingestFacebookMessagingEvent(event) {
     },
     (s) => s.role === "admin"
   );
+
+  triggerJuwaFromCustomerMessage(convo, entry);
 }
 
 function verifyFacebookSignature(req) {
@@ -1100,7 +1102,7 @@ const apiLimiter = rateLimit({
 });
 
 mountPlayerApi(app, { auth, requireAdmin });
-mountJuwaApi(app, {
+const juwaApi = mountJuwaApi(app, {
   auth,
   requireAdmin,
   dataDir: DATA_DIR,
@@ -1108,6 +1110,29 @@ mountJuwaApi(app, {
   writeJson,
   postSupportReply,
 });
+
+function recentCustomerJuwaText(convo, limit = 6) {
+  return (convo?.messages || [])
+    .filter((m) => m.from === "customer")
+    .slice(-limit)
+    .map((m) => String(m.text || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function triggerJuwaFromCustomerMessage(convo, entry) {
+  if (!juwaApi?.handleCustomerJuwaMessage || !convo?.id || !entry?.id) return;
+  const text = String(entry.text || "");
+  if (!/juwa/i.test(text) && !/juwa/i.test(recentCustomerJuwaText(convo))) return;
+  juwaApi
+    .handleCustomerJuwaMessage({
+      conversationId: convo.id,
+      messageId: entry.id,
+      text,
+      recentText: recentCustomerJuwaText(convo),
+    })
+    .catch((err) => console.warn("[juwa] customer hook:", err?.message || err));
+}
 
 app.get("/api/facebook/webhook", (req, res) => {
   const mode = String(req.query["hub.mode"] || "");
@@ -2098,6 +2123,7 @@ wss.on("connection", (ws, req) => {
             (s.role === "customer" && s.conversationId === conversationId) ||
             s.role === "admin"
         );
+        triggerJuwaFromCustomerMessage(convo, entry);
         return;
       }
 
