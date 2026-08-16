@@ -67,6 +67,7 @@
           <button type="button" class="nav-btn" data-tab="deposits" data-title="Deposits" data-admin-only>Deposits</button>
           <button type="button" class="nav-btn" data-tab="withdrawals" data-title="Withdrawals" data-admin-only>Withdrawals</button>
           <button type="button" class="nav-btn" data-tab="players" data-title="Players" data-admin-only>Players</button>
+          <button type="button" class="nav-btn" data-tab="juwa" data-title="Juwa ops" data-admin-only>Juwa ops</button>
         </nav>
         <div class="side-foot">
           <p class="signed-in" id="signed-in"></p>
@@ -96,6 +97,16 @@
                 <div class="thread-head-main">
                   <strong id="thread-name">Select a conversation</strong>
                   <div class="thread-contact" id="thread-contact" hidden></div>
+                </div>
+              </div>
+              <div class="juwa-banner" id="juwa-banner" hidden>
+                <div class="juwa-banner-copy">
+                  <strong id="juwa-banner-title">Juwa fund request</strong>
+                  <p id="juwa-banner-detail"></p>
+                </div>
+                <div class="juwa-banner-actions">
+                  <button type="button" class="btn btn-gold" id="juwa-review-btn">Review</button>
+                  <button type="button" class="btn btn-line" id="juwa-dismiss-btn">Dismiss</button>
                 </div>
               </div>
               <div class="thread-body" id="thread-body"></div>
@@ -513,7 +524,78 @@
             </table>
           </div>
         </section>
+
+        <section class="panel" id="tab-juwa">
+          <header class="panel-head row">
+            <div>
+              <h2>Juwa ops</h2>
+              <p>Fund requests from chat — admin confirmation required before Juwa submit. CAPTCHA is never auto-solved.</p>
+            </div>
+            <button type="button" class="btn btn-gold" id="refresh-juwa-btn">Refresh</button>
+          </header>
+          <p class="status" id="juwa-ops-status"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Username</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Admin</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="juwa-ops-body"></tbody>
+            </table>
+          </div>
+          <h3 class="juwa-audit-title">Audit trail</h3>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Type</th>
+                  <th>User</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Admin</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody id="juwa-audit-body"></tbody>
+            </table>
+          </div>
+        </section>
       </main>
+    </div>
+
+    <div class="juwa-modal" id="juwa-modal" hidden>
+      <div class="juwa-modal-card" role="dialog" aria-modal="true" aria-labelledby="juwa-modal-title">
+        <p class="eyebrow">Juwa fund add</p>
+        <h2 id="juwa-modal-title">Confirm before submit</h2>
+        <p class="juwa-modal-lead" id="juwa-modal-lead">
+          Review the exact username and amount. Automation runs only after you confirm here.
+        </p>
+        <label>
+          Juwa username
+          <input id="juwa-modal-username" type="text" maxlength="64" autocomplete="off" />
+        </label>
+        <label>
+          Amount to add
+          <input id="juwa-modal-amount" type="number" min="0.01" step="0.01" />
+        </label>
+        <label>
+          Source chat
+          <textarea id="juwa-modal-source" rows="3" readonly></textarea>
+        </label>
+        <p class="juwa-modal-error" id="juwa-modal-error" hidden></p>
+        <p class="juwa-modal-status" id="juwa-modal-status" hidden></p>
+        <div class="juwa-modal-actions">
+          <button type="button" class="btn btn-line" id="juwa-modal-cancel">Cancel</button>
+          <button type="button" class="btn btn-gold" id="juwa-modal-confirm">Confirm &amp; run</button>
+        </div>
+      </div>
     </div>
 
     <script src="/chat-media.js"></script>

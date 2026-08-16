@@ -591,6 +591,132 @@ textarea {
   display: none !important;
 }
 
+.juwa-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(43, 184, 174, 0.35);
+  background: rgba(43, 184, 174, 0.1);
+}
+
+.juwa-banner[hidden] {
+  display: none !important;
+}
+
+.juwa-banner-copy {
+  min-width: 0;
+}
+
+.juwa-banner-copy strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.juwa-banner-copy p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.juwa-banner-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.juwa-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(10, 12, 14, 0.55);
+}
+
+.juwa-modal[hidden] {
+  display: none !important;
+}
+
+.juwa-modal-card {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 0.65rem;
+  padding: 1.1rem 1.15rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--paper);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+.juwa-modal-card .eyebrow {
+  margin: 0;
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.juwa-modal-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.juwa-modal-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.juwa-modal-card label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.juwa-modal-card input,
+.juwa-modal-card textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.juwa-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.juwa-modal-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.juwa-modal-status {
+  margin: 0;
+  color: var(--teal);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.juwa-audit-title {
+  margin: 1.25rem 0 0.55rem;
+  padding: 0 0.25rem;
+  font-size: 1rem;
+}
+
 .thread-body {
   padding: 1rem;
   overflow: auto;

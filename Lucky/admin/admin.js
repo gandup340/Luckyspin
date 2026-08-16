@@ -236,6 +236,8 @@
 
     await refreshChats();
     connectWs();
+    setupJuwaUi();
+    if (isAdminUser()) await loadJuwaOps();
   }
 
   async function loadSpin() {
@@ -1121,6 +1123,7 @@
     showChatThread();
     renderThread();
     await refreshChats();
+    scanThreadForJuwa();
   }
 
   function renderThread() {
@@ -1294,6 +1297,7 @@
         if (msg.conversationId === activeId) {
           activeMessages.push(msg.message);
           renderThread();
+          if (msg.message?.from === "customer") scanThreadForJuwa();
         }
         if (msg.message?.from === "customer") {
           window.LuckyChatMedia?.playAlertSound?.();
@@ -1308,6 +1312,242 @@
       setTimeout(() => {
         if (token) connectWs();
       }, 2000);
+    });
+  }
+
+  // ---- Juwa fund automation (chat detect → admin confirm → server automation) ----
+  let juwaActiveRequest = null;
+  let juwaPollTimer = null;
+
+  const juwaBanner = document.getElementById("juwa-banner");
+  const juwaBannerTitle = document.getElementById("juwa-banner-title");
+  const juwaBannerDetail = document.getElementById("juwa-banner-detail");
+  const juwaModal = document.getElementById("juwa-modal");
+  const juwaModalUsername = document.getElementById("juwa-modal-username");
+  const juwaModalAmount = document.getElementById("juwa-modal-amount");
+  const juwaModalSource = document.getElementById("juwa-modal-source");
+  const juwaModalError = document.getElementById("juwa-modal-error");
+  const juwaModalStatus = document.getElementById("juwa-modal-status");
+
+  function hideJuwaBanner() {
+    if (juwaBanner) juwaBanner.hidden = true;
+  }
+
+  function showJuwaBanner(req) {
+    if (!juwaBanner) return;
+    juwaActiveRequest = req;
+    juwaBanner.hidden = false;
+    if (juwaBannerTitle) {
+      juwaBannerTitle.textContent =
+        req.status === "needs_info" ? "Juwa request needs verification" : "Juwa fund request detected";
+    }
+    if (juwaBannerDetail) {
+      const bits = [];
+      if (req.username) bits.push(`User: ${req.username}`);
+      if (req.amount != null) bits.push(`Amount: ${req.amount}`);
+      if (req.missing?.length) bits.push(`Missing: ${req.missing.join(", ")}`);
+      bits.push(req.reason || req.status);
+      juwaBannerDetail.textContent = bits.join(" · ");
+    }
+  }
+
+  function openJuwaModal(req) {
+    juwaActiveRequest = req;
+    if (juwaModalError) {
+      juwaModalError.hidden = true;
+      juwaModalError.textContent = "";
+    }
+    if (juwaModalStatus) {
+      juwaModalStatus.hidden = true;
+      juwaModalStatus.textContent = "";
+    }
+    if (juwaModalUsername) juwaModalUsername.value = req.username || "";
+    if (juwaModalAmount) juwaModalAmount.value = req.amount != null ? String(req.amount) : "";
+    if (juwaModalSource) {
+      juwaModalSource.value = `Conversation: ${req.conversationId || ""}\n${req.messageText || ""}`;
+    }
+    if (juwaModal) juwaModal.hidden = false;
+  }
+
+  function closeJuwaModal() {
+    if (juwaModal) juwaModal.hidden = true;
+    if (juwaPollTimer) {
+      clearInterval(juwaPollTimer);
+      juwaPollTimer = null;
+    }
+  }
+
+  async function createJuwaFromMessage(message) {
+    if (!activeId || !message?.id || message.from !== "customer") return null;
+    const text = String(message.text || "");
+    if (!/juwa/i.test(text)) return null;
+    try {
+      const data = await api("/api/admin/juwa/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          text,
+          conversationId: activeId,
+          messageId: message.id,
+        }),
+      });
+      return data.request || null;
+    } catch (err) {
+      if (String(err.message || "").includes("does not look like")) return null;
+      console.warn("juwa detect:", err.message || err);
+      return null;
+    }
+  }
+
+  async function scanThreadForJuwa() {
+    hideJuwaBanner();
+    const customers = [...activeMessages].reverse().filter((m) => m.from === "customer");
+    for (const m of customers.slice(0, 8)) {
+      const req = await createJuwaFromMessage(m);
+      if (req) {
+        showJuwaBanner(req);
+        return;
+      }
+    }
+  }
+
+  async function loadJuwaOps() {
+    const body = document.getElementById("juwa-ops-body");
+    const auditBody = document.getElementById("juwa-audit-body");
+    if (!body) return;
+    try {
+      const status = await api("/api/admin/juwa/status");
+      setStatus(
+        "juwa-ops-status",
+        status.automationEnabled
+          ? status.credentialsConfigured
+            ? "Automation enabled"
+            : "Automation enabled — set JUWA_AGENT_USERNAME / JUWA_AGENT_PASSWORD on server"
+          : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1)",
+        !status.automationEnabled || !status.credentialsConfigured
+      );
+      const data = await api("/api/admin/juwa/requests?limit=40");
+      const rows = data.requests || [];
+      body.innerHTML = rows.length
+        ? rows
+            .map((r) => {
+              const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+              return `<tr>
+              <td data-label="When">${esc(when)}</td>
+              <td data-label="Username"><code>${esc(r.username || "—")}</code></td>
+              <td data-label="Amount">${r.amount != null ? esc(r.amount) : "—"}</td>
+              <td data-label="Status">${esc(r.status)}</td>
+              <td data-label="Admin">${esc(r.confirmedBy || "—")}</td>
+              <td data-label="Actions">
+                <button type="button" class="btn-mini" data-juwa-open="${esc(r.id)}">Open</button>
+              </td>
+            </tr>`;
+            })
+            .join("")
+        : `<tr class="table-empty"><td colspan="6">No Juwa requests yet.</td></tr>`;
+
+      body.querySelectorAll("[data-juwa-open]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const req = await api(`/api/admin/juwa/requests/${btn.dataset.juwaOpen}`);
+          openJuwaModal(req.request);
+        });
+      });
+
+      if (auditBody) {
+        const audits = await api("/api/admin/juwa/audits?limit=40");
+        const list = audits.audits || [];
+        auditBody.innerHTML = list.length
+          ? list
+              .map((a) => {
+                const when = a.at ? new Date(a.at).toLocaleString() : "";
+                return `<tr>
+                <td>${esc(when)}</td>
+                <td>${esc(a.type || "")}</td>
+                <td><code>${esc(a.username || "—")}</code></td>
+                <td>${a.amount != null ? esc(a.amount) : "—"}</td>
+                <td>${esc(a.status || "")}</td>
+                <td>${esc(a.admin || "")}</td>
+                <td>${esc(a.message || "")}</td>
+              </tr>`;
+              })
+              .join("")
+          : `<tr class="table-empty"><td colspan="7">No audits yet.</td></tr>`;
+      }
+    } catch (err) {
+      setStatus("juwa-ops-status", err.message || "Could not load Juwa ops", true);
+    }
+  }
+
+  function setupJuwaUi() {
+    document.getElementById("juwa-dismiss-btn")?.addEventListener("click", () => hideJuwaBanner());
+    document.getElementById("juwa-review-btn")?.addEventListener("click", () => {
+      if (juwaActiveRequest) openJuwaModal(juwaActiveRequest);
+    });
+    document.getElementById("juwa-modal-cancel")?.addEventListener("click", () => closeJuwaModal());
+    document.getElementById("refresh-juwa-btn")?.addEventListener("click", () => loadJuwaOps());
+
+    document.querySelector('.nav-btn[data-tab="juwa"]')?.addEventListener("click", () => {
+      loadJuwaOps().catch(() => {});
+    });
+
+    document.getElementById("juwa-modal-confirm")?.addEventListener("click", async () => {
+      if (!juwaActiveRequest?.id) return;
+      const username = String(juwaModalUsername?.value || "").trim();
+      const amount = Number(juwaModalAmount?.value);
+      if (!username || !Number.isFinite(amount) || amount <= 0) {
+        if (juwaModalError) {
+          juwaModalError.hidden = false;
+          juwaModalError.textContent = "Enter an exact username and a positive amount. Do not guess.";
+        }
+        return;
+      }
+      if (juwaModalError) juwaModalError.hidden = true;
+      const btn = document.getElementById("juwa-modal-confirm");
+      if (btn) btn.disabled = true;
+      try {
+        await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}/confirm`, {
+          method: "POST",
+          body: JSON.stringify({ username, amount }),
+        });
+        if (juwaModalStatus) {
+          juwaModalStatus.hidden = false;
+          juwaModalStatus.textContent =
+            "Running… If CAPTCHA appears, complete self-identification in the browser window.";
+        }
+        if (juwaPollTimer) clearInterval(juwaPollTimer);
+        juwaPollTimer = setInterval(async () => {
+          try {
+            const data = await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}`);
+            const req = data.request;
+            juwaActiveRequest = req;
+            if (juwaModalStatus) {
+              juwaModalStatus.hidden = false;
+              juwaModalStatus.textContent = `${req.status}${req.error ? ` — ${req.error}` : req.reason ? ` — ${req.reason}` : ""}`;
+            }
+            if (["success", "failed", "awaiting_captcha", "cancelled"].includes(req.status)) {
+              clearInterval(juwaPollTimer);
+              juwaPollTimer = null;
+              if (btn) btn.disabled = false;
+              if (req.status === "success") {
+                showJuwaBanner(req);
+                await loadJuwaOps();
+              }
+              if (req.status === "awaiting_captcha" && juwaModalError) {
+                juwaModalError.hidden = false;
+                juwaModalError.textContent =
+                  "CAPTCHA required. Complete it in the opened browser, then click Confirm & run again.";
+              }
+            }
+          } catch {
+            /* keep polling */
+          }
+        }, 2000);
+      } catch (err) {
+        if (juwaModalError) {
+          juwaModalError.hidden = false;
+          juwaModalError.textContent = err.message || "Could not start automation";
+        }
+        if (btn) btn.disabled = false;
+      }
     });
   }
 

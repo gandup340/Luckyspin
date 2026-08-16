@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const webpush = require("web-push");
 const { mountPlayerApi } = require("./player-api");
+const { mountJuwaApi } = require("./juwa-api");
 const { dbEnabled, query } = require("./db");
 const { emailConfigured, smtpSettings } = require("./mail");
 
@@ -1049,6 +1050,7 @@ const apiLimiter = rateLimit({
 });
 
 mountPlayerApi(app, { auth, requireAdmin });
+mountJuwaApi(app, { auth, requireAdmin, dataDir: DATA_DIR, readJson, writeJson });
 
 app.get("/api/facebook/webhook", (req, res) => {
   const mode = String(req.query["hub.mode"] || "");
