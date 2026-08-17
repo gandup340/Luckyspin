@@ -450,7 +450,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     res.json({ ok: true, parsed });
   });
 
-  app.post("/api/admin/juwa/requests", auth, (req, res) => {
+  app.post("/api/admin/juwa/requests", auth, async (req, res) => {
     const text = String(req.body?.text || "");
     const conversationId = String(req.body?.conversationId || "");
     const messageId = String(req.body?.messageId || "");
