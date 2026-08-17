@@ -149,7 +149,36 @@ LOGIN_PASS_SELS = [
 
 def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
     eprint(f"[milkyway] open login {login_url}")
-    page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
+    last_nav = None
+    for nav_try in range(3):
+        try:
+            page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
+            last_nav = None
+        except Exception as err:  # noqa: BLE001
+            last_nav = str(err)
+            eprint(f"[milkyway] goto failed try {nav_try + 1}: {err}")
+            page.wait_for_timeout(800)
+            continue
+        title = ""
+        try:
+            title = (page.title() or "").lower()
+        except Exception:  # noqa: BLE001
+            title = ""
+        body = ""
+        try:
+            body = (page.locator("body").inner_text() or "").lower()
+        except Exception:  # noqa: BLE001
+            body = ""
+        crashed = "runtime error" in title or "server error" in body or "application error" in body
+        if crashed:
+            eprint(f"[milkyway] site error page try {nav_try + 1}")
+            page.wait_for_timeout(1200)
+            continue
+        break
+    else:
+        if last_nav:
+            return f"MilkyWay login page would not load ({last_nav})"
+        return "MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads."
 
     ready = poll(
         page,
@@ -158,6 +187,13 @@ def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, 
         interval_ms=150,
     )
     if not ready:
+        title = ""
+        try:
+            title = (page.title() or "").lower()
+        except Exception:  # noqa: BLE001
+            title = ""
+        if "runtime error" in title:
+            return "MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads."
         return f"Could not find MilkyWay login fields ({page_hint(page)})"
 
     ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
