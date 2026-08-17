@@ -39,7 +39,7 @@ def env(name: str, default: str = "") -> str:
 
 
 def launch_browser(p: Any, headed: bool) -> Any:
-    args = ["--disable-dev-shm-usage"]
+    args = ["--disable-dev-shm-usage", "--ignore-certificate-errors"]
     attempts = [
         {"headless": not headed, "channel": "chrome", "args": args},
         {"headless": not headed, "channel": "msedge", "args": args},
@@ -54,21 +54,30 @@ def launch_browser(p: Any, headed: bool) -> Any:
     raise last_err or RuntimeError("Could not launch Chromium")
 
 
+def contexts(page: Any):
+    yield page
+    for fr in page.frames:
+        if fr != page.main_frame:
+            yield fr
+
+
 def fill_first(page: Any, selectors: list[str], value: str) -> bool:
-    for sel in selectors:
-        loc = page.locator(sel).first
-        if loc.count() > 0:
-            loc.fill(value)
-            return True
+    for ctx in contexts(page):
+        for sel in selectors:
+            loc = ctx.locator(sel).first
+            if loc.count() > 0:
+                loc.fill(value, force=True)
+                return True
     return False
 
 
 def click_first(page: Any, selectors: list[str]) -> bool:
-    for sel in selectors:
-        loc = page.locator(sel).first
-        if loc.count() > 0:
-            loc.click()
-            return True
+    for ctx in contexts(page):
+        for sel in selectors:
+            loc = ctx.locator(sel).first
+            if loc.count() > 0:
+                loc.click(force=True)
+                return True
     return False
 
 
@@ -94,26 +103,72 @@ def still_on_login(page: Any) -> bool:
     return "login" in (page.title() or "").lower()
 
 
+def page_hint(page: Any) -> str:
+    title = ""
+    body = ""
+    fields = ""
+    try:
+        title = page.title() or ""
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        body = (page.locator("body").inner_text() or "").replace("\n", " ").strip()[:80]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        names = []
+        for ctx in contexts(page):
+            names.extend(
+                ctx.evaluate(
+                    """() => [...document.querySelectorAll('input')].slice(0, 12).map(el =>
+                      el.id || el.name || el.getAttribute('placeholder') || el.type || '')"""
+                )
+                or []
+            )
+        fields = ",".join(str(n) for n in names if n)
+    except Exception:  # noqa: BLE001
+        pass
+    return f"url={page.url} title={title!r} fields={fields!r} body={body!r}"
+
+
+LOGIN_USER_SELS = [
+    "#txtLoginName",
+    'input[name="txtLoginName"]',
+    'input[placeholder*="username" i]',
+    'input[placeholder*="user" i]',
+    'input[id*="LoginName" i]',
+    'input[name*="LoginName" i]',
+]
+LOGIN_PASS_SELS = [
+    "#txtLoginPass",
+    'input[name="txtLoginPass"]',
+    'input[type="password"]',
+    'input[id*="Pass" i]',
+    'input[name*="Pass" i]',
+]
+
+
 def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
     eprint(f"[milkyway] open login {login_url}")
-    page.goto(login_url, wait_until="domcontentloaded")
+    page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
     try:
-        page.locator("#txtLoginName").wait_for(state="visible", timeout=5000)
+        page.wait_for_load_state("load", timeout=15000)
     except Exception:  # noqa: BLE001
-        page.wait_for_timeout(200)
+        pass
 
-    ok_user = fill_first(
+    ready = poll(
         page,
-        ["#txtLoginName", 'input[name="txtLoginName"]', 'input[placeholder*="username" i]'],
-        agent_user,
+        lambda: any(ctx.locator(sel).count() > 0 for ctx in contexts(page) for sel in LOGIN_USER_SELS),
+        timeout_s=20,
+        interval_ms=250,
     )
-    ok_pass = fill_first(
-        page,
-        ["#txtLoginPass", 'input[name="txtLoginPass"]', 'input[type="password"]'],
-        agent_pass,
-    )
+    if not ready:
+        return f"Could not find MilkyWay login fields ({page_hint(page)})"
+
+    ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
+    ok_pass = fill_first(page, LOGIN_PASS_SELS, agent_pass)
     if not ok_user or not ok_pass:
-        return "Could not find MilkyWay login fields"
+        return f"Could not find MilkyWay login fields ({page_hint(page)})"
 
     last_err = "captcha failed"
     for attempt in range(5):
@@ -332,9 +387,16 @@ def main() -> int:
     try:
         with sync_playwright() as p:
             browser = launch_browser(p, headed)
-            context = browser.new_context(viewport={"width": 1280, "height": 800}, ignore_https_errors=True)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                ignore_https_errors=True,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                ),
+            )
             page = context.new_page()
-            page.set_default_timeout(min(timeout_ms, 15000))
+            page.set_default_timeout(max(timeout_ms, 45000))
             page.on("dialog", lambda dialog: dialog.accept())
 
             login_err = login_milkyway(page, login_url, agent_user, agent_pass, solve_captcha)
