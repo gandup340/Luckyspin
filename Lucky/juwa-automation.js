@@ -88,7 +88,7 @@ function runPythonBridge(job, cfg, log, extra = {}) {
     log(`Python bridge: ${cfg.pythonBin} ${path.basename(cfg.pythonScript)}`);
     const child = spawn(cfg.pythonBin, [cfg.pythonScript], {
       cwd: path.dirname(cfg.pythonScript),
-      env: { ...process.env },
+      env: { ...process.env, PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL: "0" },
       windowsHide: true,
     });
 

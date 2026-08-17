@@ -38,8 +38,23 @@ def env(name: str, default: str = "") -> str:
     return str(os.environ.get(name, default) or "").strip()
 
 
+CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
+LOGIN_PREFERRED = "https://milkywayapp.xyz:8781/default.aspx?639225872727471705"
+STORE_DEFAULT = "https://milkywayapp.xyz:8781/Store.aspx"
+
+
 def launch_browser(p: Any, headed: bool) -> Any:
-    args = ["--disable-dev-shm-usage", "--ignore-certificate-errors"]
+    # Headless-shell TLS fingerprint makes this IIS host return Runtime Error / 500.
+    os.environ["PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL"] = "0"
+    args = [
+        "--disable-dev-shm-usage",
+        "--ignore-certificate-errors",
+        "--no-sandbox",
+        "--disable-blink-features=AutomationControlled",
+    ]
     bundled = {"headless": not headed, "args": args}
     chrome = {"headless": not headed, "channel": "chrome", "args": args}
     edge = {"headless": not headed, "channel": "msedge", "args": args}
@@ -51,6 +66,35 @@ def launch_browser(p: Any, headed: bool) -> Any:
         except Exception as err:  # noqa: BLE001
             last_err = err
     raise last_err or RuntimeError("Could not launch Chromium")
+
+
+def new_browser_context(browser: Any) -> Any:
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        ignore_https_errors=True,
+        user_agent=CHROME_UA,
+        locale="en-US",
+        extra_http_headers={
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    return context
+
+
+def login_url_candidates(preferred: str) -> list[str]:
+    ordered = [
+        (preferred or "").strip(),
+        LOGIN_PREFERRED,
+        "https://milkywayapp.xyz:8781/default.aspx",
+        "https://milkywayapp.xyz:8781/",
+    ]
+    out: list[str] = []
+    for url in ordered:
+        if url and url not in out:
+            out.append(url)
+    return out
 
 
 def contexts(page: Any):
@@ -147,53 +191,63 @@ LOGIN_PASS_SELS = [
 ]
 
 
-def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
-    eprint(f"[milkyway] open login {login_url}")
+def login_fields_present(page: Any) -> bool:
+    return any(ctx.locator(sel).count() > 0 for ctx in contexts(page) for sel in LOGIN_USER_SELS)
+
+
+def looks_like_aspnet_crash(page: Any) -> bool:
+    if login_fields_present(page):
+        return False
+    title = ""
+    body = ""
+    try:
+        title = (page.title() or "").lower()
+    except Exception:  # noqa: BLE001
+        title = ""
+    try:
+        body = (page.locator("body").inner_text() or "").lower()
+    except Exception:  # noqa: BLE001
+        body = ""
+    return "runtime error" in title or "server error" in body or "application error" in body
+
+
+def open_login_page(page: Any, login_url: str) -> str | None:
     last_nav = None
-    for nav_try in range(3):
+    last_crash = False
+    for url in login_url_candidates(login_url):
+        eprint(f"[milkyway] open login {url}")
         try:
-            page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
             last_nav = None
         except Exception as err:  # noqa: BLE001
             last_nav = str(err)
-            eprint(f"[milkyway] goto failed try {nav_try + 1}: {err}")
-            page.wait_for_timeout(800)
+            eprint(f"[milkyway] goto failed: {err}")
             continue
-        title = ""
-        try:
-            title = (page.title() or "").lower()
-        except Exception:  # noqa: BLE001
-            title = ""
-        body = ""
-        try:
-            body = (page.locator("body").inner_text() or "").lower()
-        except Exception:  # noqa: BLE001
-            body = ""
-        crashed = "runtime error" in title or "server error" in body or "application error" in body
-        if crashed:
-            eprint(f"[milkyway] site error page try {nav_try + 1}")
-            page.wait_for_timeout(1200)
+        if poll(page, lambda: login_fields_present(page), timeout_s=2.5, interval_ms=120):
+            return None
+        if looks_like_aspnet_crash(page):
+            last_crash = True
+            eprint(f"[milkyway] error page on {url}")
             continue
-        break
-    else:
-        if last_nav:
-            return f"MilkyWay login page would not load ({last_nav})"
-        return "MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads."
+        last_crash = False
+    if login_fields_present(page):
+        return None
+    if last_nav:
+        return f"MilkyWay login page would not load ({last_nav})"
+    if last_crash:
+        return f"MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads. ({page_hint(page)})"
+    return f"Could not find MilkyWay login fields ({page_hint(page)})"
 
-    ready = poll(
-        page,
-        lambda: any(ctx.locator(sel).count() > 0 for ctx in contexts(page) for sel in LOGIN_USER_SELS),
-        timeout_s=8,
-        interval_ms=150,
-    )
+
+def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
+    open_err = open_login_page(page, login_url)
+    if open_err:
+        return open_err
+
+    ready = poll(page, lambda: login_fields_present(page), timeout_s=8, interval_ms=150)
     if not ready:
-        title = ""
-        try:
-            title = (page.title() or "").lower()
-        except Exception:  # noqa: BLE001
-            title = ""
-        if "runtime error" in title:
-            return "MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads."
+        if looks_like_aspnet_crash(page):
+            return f"MilkyWay agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads. ({page_hint(page)})"
         return f"Could not find MilkyWay login fields ({page_hint(page)})"
 
     ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
@@ -413,8 +467,8 @@ def main() -> int:
     job = read_job()
     target = str(job.get("targetUsername") or "").strip()
     amount = float(job.get("amount") or 0)
-    login_url = str(job.get("loginUrl") or env("MILKYWAY_LOGIN_URL", "https://milkywayapp.xyz:8781/default.aspx?639225872727471705"))
-    store_url = str(job.get("storeUrl") or env("MILKYWAY_STORE_URL", "https://milkywayapp.xyz:8781/Store.aspx"))
+    login_url = str(job.get("loginUrl") or env("MILKYWAY_LOGIN_URL", LOGIN_PREFERRED))
+    store_url = str(job.get("storeUrl") or env("MILKYWAY_STORE_URL", STORE_DEFAULT))
     agent_user = str(job.get("agentUsername") or env("MILKYWAY_AGENT_USERNAME"))
     agent_pass = str(job.get("agentPassword") or env("MILKYWAY_AGENT_PASSWORD"))
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
@@ -431,14 +485,7 @@ def main() -> int:
     try:
         with sync_playwright() as p:
             browser = launch_browser(p, headed)
-            context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                ignore_https_errors=True,
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                ),
-            )
+            context = new_browser_context(browser)
             page = context.new_page()
             page.set_default_timeout(8000)
             page.on("dialog", lambda dialog: dialog.accept())

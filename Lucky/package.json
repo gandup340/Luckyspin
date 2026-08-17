@@ -1,6 +1,6 @@
 {
   "name": "lucky-vips-game",
-  "version": "1.0.0.22",
+  "version": "1.0.0.23",
   "private": true,
   "description": "LUCKY VIPS GAME casino portal with admin panel, support chat, and Facebook Messenger",
   "main": "server.js",
