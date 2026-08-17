@@ -73,6 +73,7 @@ def launch_browser(p: Any, headed: bool) -> Any:
 def new_browser_context(browser: Any) -> Any:
     context = browser.new_context(
         viewport={"width": 1280, "height": 800},
+        device_scale_factor=2,
         ignore_https_errors=True,
         user_agent=CHROME_UA,
         locale="en-US",
@@ -241,6 +242,21 @@ def open_login_page(page: Any, login_url: str) -> str | None:
     return f"Could not find Orion login fields ({page_hint(page)})"
 
 
+def login_page_hint(page: Any) -> str:
+    try:
+        t = (page.locator("body").inner_text() or "").replace("\n", " ").strip()[:220]
+    except Exception:  # noqa: BLE001
+        return ""
+    low = t.lower()
+    if any(s in low for s in ("verification", "verify code", "invalid code", "wrong code")):
+        return "wrong captcha"
+    if any(s in low for s in ("password", "account", "username", "user name")) and any(
+        s in low for s in ("invalid", "incorrect", "wrong", "fail")
+    ):
+        return "wrong credentials"
+    return t[:80]
+
+
 def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
     open_err = open_login_page(page, login_url)
     if open_err:
@@ -252,21 +268,23 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
             return f"Orion agent site is down (Runtime Error / 500). Open the panel in a browser and retry when login loads. ({page_hint(page)})"
         return f"Could not find Orion login fields ({page_hint(page)})"
 
-    ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
-    ok_pass = fill_first(page, LOGIN_PASS_SELS, agent_pass)
-    if not ok_user or not ok_pass:
-        return f"Could not find Orion login fields ({page_hint(page)})"
-
     last_err = "captcha failed"
-    for attempt in range(3):
+    for attempt in range(8):
         if not still_on_login(page):
             return None
+        ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
+        ok_pass = fill_first(page, LOGIN_PASS_SELS, agent_pass)
+        if not ok_user or not ok_pass:
+            return f"Could not find Orion login fields ({page_hint(page)})"
         try:
-            code = solve_captcha(page, {"expected_len": 5, "login_url": login_url, "max_attempts": 2})
+            code = solve_captcha(
+                page,
+                {"expected_len": 5, "login_url": login_url, "max_attempts": 3, "style": "aspnet"},
+            )
         except Exception as err:  # noqa: BLE001
             last_err = f"solve_captcha failed: {err}"
             eprint(f"[orion] captcha attempt {attempt + 1}: {last_err}")
-            page.wait_for_timeout(200)
+            page.wait_for_timeout(300)
             continue
         filled = fill_first(
             page,
@@ -275,18 +293,22 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         )
         if not filled:
             return "Could not find Orion verification code field"
-        eprint(f"[orion] filled code ({len(code)} digits), login attempt {attempt + 1}")
+        eprint(f"[orion] filled code {code} ({len(code)} digits), login attempt {attempt + 1}")
         if not click_first(page, ["#btnLogin", 'input[name="btnLogin"]', 'input[value*="Login" i]']):
             page.keyboard.press("Enter")
-        left = poll(page, lambda: not still_on_login(page), timeout_s=4, interval_ms=120)
+        left = poll(page, lambda: not still_on_login(page), timeout_s=6, interval_ms=150)
         if left:
             return None
-        last_err = "Still on Orion login after submit (wrong code or credentials)"
+        hint = login_page_hint(page)
+        last_err = f"Still on Orion login after submit ({hint or 'wrong code or credentials'})"
         eprint(f"[orion] {last_err}")
         img = page.locator("#imgCode, #imgVerify, #Image1, img[src*='ValidateCode' i]").first
         if img.count() > 0:
-            img.click(timeout=2000)
-            page.wait_for_timeout(250)
+            try:
+                img.click(timeout=2000)
+            except Exception:  # noqa: BLE001
+                pass
+            page.wait_for_timeout(400)
     return last_err
 
 

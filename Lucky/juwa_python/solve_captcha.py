@@ -78,8 +78,8 @@ def preprocess_captcha(image: Image.Image) -> Image.Image:
     return Image.fromarray(255 - up)
 
 
-def preprocess_dark_digits(image: Image.Image) -> Image.Image:
-    """GameVault-style: keep large dark digits, drop speckle and the wavy line."""
+def preprocess_dark_digits(image: Image.Image, expected_len: int = 4) -> Image.Image:
+    """Keep large dark digits, drop speckle and the wavy line."""
     rgb = np.array(image.convert("RGB"))
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(gray, (3, 3), 0)
@@ -96,8 +96,9 @@ def preprocess_dark_digits(image: Image.Image) -> Image.Image:
         if area < 18 or ch < h * 0.28:
             continue
         keep.append((int(stats[i, cv2.CC_STAT_LEFT]), i, ch))
-    if len(keep) > 4:
-        keep = sorted(keep, key=lambda t: t[2], reverse=True)[:4]
+    nkeep = max(4, int(expected_len or 4))
+    if len(keep) > nkeep:
+        keep = sorted(keep, key=lambda t: t[2], reverse=True)[:nkeep]
     keep.sort()
     out = np.zeros_like(mask)
     if keep:
@@ -109,6 +110,17 @@ def preprocess_dark_digits(image: Image.Image) -> Image.Image:
     return Image.fromarray(255 - up)
 
 
+def _ocr_dddd(image: Image.Image) -> str:
+    buf = BytesIO()
+    image.convert("RGB").save(buf, format="PNG")
+    ocr = _ddddocr()
+    try:
+        ocr.set_ranges("0123456789")
+    except Exception:
+        pass
+    return str(ocr.classification(buf.getvalue()) or "")
+
+
 def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> str:
     n = int(expected_len or 4)
     guesses: list[str] = []
@@ -118,52 +130,51 @@ def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> s
         if len(digits) == n:
             guesses.append(digits)
 
-    buf = BytesIO()
-    image.convert("RGB").save(buf, format="PNG")
-    try:
-        ocr = _ddddocr()
-        try:
-            ocr.set_ranges("0123456789")
-        except Exception:
-            pass
-        add_guess(ocr.classification(buf.getvalue()))
-    except Exception:
-        pass
+    w, h = image.size
+    big = image.convert("RGB").resize((max(w * 3, 180), max(h * 3, 54)), Image.Resampling.NEAREST)
+    dark = preprocess_dark_digits(image, expected_len=n)
+    purple = preprocess_captcha(image)
+    prefer_dark = style in ("dark", "aspnet", "orion", "milkyway") or n >= 5
 
-    processed = preprocess_dark_digits(image) if style == "dark" else preprocess_captcha(image)
-    try:
-        add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
-    except Exception:
-        pass
-    if style == "dark":
+    for img in (big, image, dark, purple):
         try:
-            buf2 = BytesIO()
-            processed.convert("RGB").save(buf2, format="PNG")
-            add_guess(_ddddocr().classification(buf2.getvalue()))
+            add_guess(_ocr_dddd(img))
         except Exception:
             pass
+    for processed in (dark, purple) if prefer_dark else (purple, dark):
         try:
-            add_guess(pytesseract.image_to_string(preprocess_captcha(image), config=_OCR_CONFIG))
+            add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
         except Exception:
             pass
 
     if not guesses:
         return ""
-    # Prefer a value that at least two engines agree on.
     counts: dict[str, int] = {}
     for g in guesses:
         counts[g] = counts.get(g, 0) + 1
-    best = max(counts.items(), key=lambda kv: kv[1])
+    best = max(counts.items(), key=lambda kv: (kv[1], -guesses.index(kv[0])))
     if best[1] >= 2:
         return best[0]
     return guesses[0]
 
 
+def _frames(page: Any) -> list[Any]:
+    out = [page]
+    try:
+        for fr in page.frames:
+            if fr not in out:
+                out.append(fr)
+    except Exception:
+        pass
+    return out
+
+
 def _captcha_image_locator(page: Any) -> Any | None:
-    for sel in _CAPTCHA_IMG_SELECTORS:
-        loc = page.locator(sel).first
-        if loc.count() > 0:
-            return loc
+    for ctx in _frames(page):
+        for sel in _CAPTCHA_IMG_SELECTORS:
+            loc = ctx.locator(sel).first
+            if loc.count() > 0:
+                return loc
     inp = find_captcha_input(page)
     if inp is not None:
         for xp in ("xpath=following::img[1]", "xpath=../img", "xpath=..//img"):
@@ -200,7 +211,11 @@ def _image_from_locator(page: Any, loc: Any) -> Image.Image:
     except Exception:
         pass
     try:
-        png = loc.screenshot(type="png", animations="disabled", timeout=5000)
+        page.wait_for_timeout(200)
+    except Exception:
+        pass
+    try:
+        png = loc.screenshot(type="png", animations="disabled", timeout=5000, scale="css")
         return Image.open(BytesIO(png)).convert("RGB")
     except Exception:
         pass
