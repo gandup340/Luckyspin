@@ -116,6 +116,17 @@ def unquote_cred(value: str) -> str:
     return s
 
 
+def restore_orion_password(value: str) -> str:
+    s = unquote_cred(value)
+    if not s:
+        return s
+    if not s.endswith("#"):
+        s += "#"
+    if s.endswith("$#") and not s.endswith("$$#"):
+        s = s[:-2] + "$$#"
+    return s
+
+
 def fill_first(page: Any, selectors: list[str], value: str) -> bool:
     for ctx in contexts(page):
         for sel in selectors:
@@ -365,7 +376,7 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         hint = login_page_hint(page)
         last_err = (
             f"Still on Orion login after submit ({hint or 'wrong code or credentials'}); "
-            f"agent={agent_user} passLen={len(agent_pass)}"
+            f"agent={agent_user} passLen={len(agent_pass)} v=33"
         )
         eprint(f"[orion] {last_err}")
         img = page.locator("#imgCode, #imgVerify, #Image1, img[src*='ValidateCode' i]").first
@@ -927,9 +938,7 @@ def main() -> int:
     login_url = str(job.get("loginUrl") or env("ORION_LOGIN_URL", LOGIN_PREFERRED))
     store_url = str(job.get("storeUrl") or env("ORION_STORE_URL", STORE_DEFAULT))
     agent_user = unquote_cred(str(job.get("agentUsername") or env("ORION_AGENT_USERNAME"))).strip()
-    agent_pass = unquote_cred(str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD")))
-    if agent_pass and not agent_pass.endswith("#"):
-        agent_pass += "#"
+    agent_pass = restore_orion_password(str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD")))
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
     timeout_ms = int(job.get("timeoutMs") or env("ORION_TIMEOUT_MS") or env("JUWA_TIMEOUT_MS", "75000") or 75000)
     amount_str = str(int(amount) if float(amount).is_integer() else amount)
