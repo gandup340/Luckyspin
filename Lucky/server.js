@@ -1908,17 +1908,21 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use("/uploads/chat", (req, res, next) => {
+  const filename = path.basename(String(req.path || ""));
+  const fullPath = path.join(UPLOADS_CHAT_DIR, filename);
+  if (!filename || filename.includes("..") || !fs.existsSync(fullPath)) {
+    return res.status(404).type("text/plain").send("Not found");
+  }
+  next();
+});
 app.use(
   "/uploads/chat",
   express.static(UPLOADS_CHAT_DIR, {
     index: false,
-    fallthrough: false,
+    fallthrough: true,
     maxAge: "7d",
   })
-);
-app.use(
-  "/uploads/chat",
-  express.static(UPLOADS_CHAT_DIR, { fallthrough: false, index: false, maxAge: "1d" })
 );
 app.get("/sw.js", (_req, res) => {
   res.setHeader("Cache-Control", "no-cache");

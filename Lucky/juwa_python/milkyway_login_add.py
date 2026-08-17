@@ -40,11 +40,10 @@ def env(name: str, default: str = "") -> str:
 
 def launch_browser(p: Any, headed: bool) -> Any:
     args = ["--disable-dev-shm-usage", "--ignore-certificate-errors"]
-    attempts = [
-        {"headless": not headed, "channel": "chrome", "args": args},
-        {"headless": not headed, "channel": "msedge", "args": args},
-        {"headless": not headed, "args": args},
-    ]
+    bundled = {"headless": not headed, "args": args}
+    chrome = {"headless": not headed, "channel": "chrome", "args": args}
+    edge = {"headless": not headed, "channel": "msedge", "args": args}
+    attempts = [chrome, edge, bundled] if os.name == "nt" else [bundled, chrome, edge]
     last_err: Exception | None = None
     for kwargs in attempts:
         try:
@@ -66,7 +65,7 @@ def fill_first(page: Any, selectors: list[str], value: str) -> bool:
         for sel in selectors:
             loc = ctx.locator(sel).first
             if loc.count() > 0:
-                loc.fill(value, force=True)
+                loc.fill(value, force=True, timeout=2500)
                 return True
     return False
 
@@ -76,7 +75,7 @@ def click_first(page: Any, selectors: list[str]) -> bool:
         for sel in selectors:
             loc = ctx.locator(sel).first
             if loc.count() > 0:
-                loc.click(force=True)
+                loc.click(force=True, timeout=2500)
                 return True
     return False
 
@@ -150,17 +149,13 @@ LOGIN_PASS_SELS = [
 
 def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
     eprint(f"[milkyway] open login {login_url}")
-    page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
-    try:
-        page.wait_for_load_state("load", timeout=15000)
-    except Exception:  # noqa: BLE001
-        pass
+    page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
 
     ready = poll(
         page,
         lambda: any(ctx.locator(sel).count() > 0 for ctx in contexts(page) for sel in LOGIN_USER_SELS),
-        timeout_s=20,
-        interval_ms=250,
+        timeout_s=8,
+        interval_ms=150,
     )
     if not ready:
         return f"Could not find MilkyWay login fields ({page_hint(page)})"
@@ -171,15 +166,15 @@ def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, 
         return f"Could not find MilkyWay login fields ({page_hint(page)})"
 
     last_err = "captcha failed"
-    for attempt in range(5):
+    for attempt in range(3):
         if not still_on_login(page):
             return None
         try:
-            code = solve_captcha(page, {"expected_len": 5, "login_url": login_url})
+            code = solve_captcha(page, {"expected_len": 5, "login_url": login_url, "max_attempts": 2})
         except Exception as err:  # noqa: BLE001
             last_err = f"solve_captcha failed: {err}"
             eprint(f"[milkyway] captcha attempt {attempt + 1}: {last_err}")
-            page.wait_for_timeout(250)
+            page.wait_for_timeout(200)
             continue
         filled = fill_first(
             page,
@@ -191,15 +186,15 @@ def login_milkyway(page: Any, login_url: str, agent_user: str, agent_pass: str, 
         eprint(f"[milkyway] filled code ({len(code)} digits), login attempt {attempt + 1}")
         if not click_first(page, ["#btnLogin", 'input[name="btnLogin"]', 'input[value*="Login" i]']):
             page.keyboard.press("Enter")
-        left = poll(page, lambda: not still_on_login(page), timeout_s=6, interval_ms=150)
+        left = poll(page, lambda: not still_on_login(page), timeout_s=4, interval_ms=120)
         if left:
             return None
         last_err = "Still on MilkyWay login after submit (wrong code or credentials)"
         eprint(f"[milkyway] {last_err}")
         img = page.locator("#imgCode, #imgVerify, #Image1, img[src*='ValidateCode' i]").first
         if img.count() > 0:
-            img.click()
-            page.wait_for_timeout(350)
+            img.click(timeout=2000)
+            page.wait_for_timeout(250)
     return last_err
 
 
@@ -396,7 +391,7 @@ def main() -> int:
                 ),
             )
             page = context.new_page()
-            page.set_default_timeout(max(timeout_ms, 45000))
+            page.set_default_timeout(8000)
             page.on("dialog", lambda dialog: dialog.accept())
 
             login_err = login_milkyway(page, login_url, agent_user, agent_pass, solve_captcha)

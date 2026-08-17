@@ -189,7 +189,8 @@ def solve_captcha(page: Any, ctx: dict | None = None) -> str:
         raise RuntimeError("Captcha image not found on the login page")
 
     last = ""
-    for attempt in range(3):
+    attempts = int((ctx or {}).get("max_attempts") or 3)
+    for attempt in range(max(1, attempts)):
         image = _image_from_locator(page, loc)
         try:
             image.save(_LAST_PNG)
@@ -199,7 +200,7 @@ def solve_captcha(page: Any, ctx: dict | None = None) -> str:
         if len(last) == expected_len:
             return last
         loc.click()
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(400)
 
     raise RuntimeError(f"OCR did not return {expected_len} digits (got {last!r})")
 

@@ -27,6 +27,7 @@ function juwaConfig() {
 }
 
 function milkywayConfig() {
+  const timeoutMs = Number(process.env.MILKYWAY_TIMEOUT_MS || 90000);
   return {
     enabled: String(process.env.MILKYWAY_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
     loginUrl: String(process.env.MILKYWAY_LOGIN_URL || "https://milkywayapp.xyz:8781/").trim(),
@@ -34,8 +35,8 @@ function milkywayConfig() {
     username: String(process.env.MILKYWAY_AGENT_USERNAME || "").trim(),
     password: String(process.env.MILKYWAY_AGENT_PASSWORD || ""),
     headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
-    timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 180000),
-    captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 300000),
+    timeoutMs,
+    captchaWaitMs: timeoutMs,
     pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
     pythonScript: String(
       process.env.MILKYWAY_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "milkyway_login_add.py")
