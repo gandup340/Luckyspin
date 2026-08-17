@@ -157,14 +157,27 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     running.add(rowId);
     try {
-      const result = await runAddFunds({
-        username,
-        amount,
-        game,
-        onStatus: (s) => {
-          store.updateRequest(rowId, { reason: String(s || "").slice(0, 240) });
-        },
-      });
+      const result = await Promise.race([
+        runAddFunds({
+          username,
+          amount,
+          game,
+          onStatus: (s) => {
+            store.updateRequest(rowId, { reason: String(s || "").slice(0, 240) });
+          },
+        }),
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                ok: false,
+                status: "timeout",
+                error: "Add-funds took too long. Try again.",
+              }),
+            100000
+          );
+        }),
+      ]);
 
       if (result.ok) {
         store.updateRequest(rowId, {

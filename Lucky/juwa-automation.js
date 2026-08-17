@@ -24,8 +24,8 @@ function juwaConfig() {
     username: envUnquote(process.env.JUWA_AGENT_USERNAME || "").trim(),
     password: envUnquote(process.env.JUWA_AGENT_PASSWORD || ""),
     headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
-    timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 180000),
-    captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 300000),
+    timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 90000),
+    captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 90000),
     pythonBridge: String(process.env.JUWA_PYTHON_BRIDGE || "1").trim() !== "0",
     pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
     pythonScript: String(
@@ -53,7 +53,7 @@ function milkywayConfig() {
 }
 
 function gamevaultConfig() {
-  const timeoutMs = Number(process.env.GAMEVAULT_TIMEOUT_MS || process.env.JUWA_TIMEOUT_MS || 90000);
+  const timeoutMs = Number(process.env.GAMEVAULT_TIMEOUT_MS || 90000);
   return {
     enabled: String(process.env.GAMEVAULT_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
     loginUrl: String(process.env.GAMEVAULT_LOGIN_URL || "https://agent.gamevault999.com/login").trim(),
@@ -121,13 +121,28 @@ function runPythonBridge(job, cfg, log, extra = {}) {
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const limitMs = Math.max(20000, Number(cfg.timeoutMs) || 90000);
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      resolve(result);
+    };
+
     const killTimer = setTimeout(() => {
       try {
-        child.kill();
+        child.kill("SIGKILL");
       } catch {
         /* ignore */
       }
-    }, Math.max(cfg.timeoutMs, cfg.captchaWaitMs) + 15000);
+      finish({
+        ok: false,
+        status: "timeout",
+        error: `Add-funds timed out after ${Math.round(limitMs / 1000)}s`,
+      });
+    }, limitMs);
 
     child.stdout.on("data", (buf) => {
       stdout += String(buf);
@@ -139,8 +154,7 @@ function runPythonBridge(job, cfg, log, extra = {}) {
     });
 
     child.on("error", (err) => {
-      clearTimeout(killTimer);
-      resolve({
+      finish({
         ok: false,
         status: "python_spawn_failed",
         error: err.message || "Could not start Python bridge",
@@ -148,7 +162,6 @@ function runPythonBridge(job, cfg, log, extra = {}) {
     });
 
     child.on("close", (code) => {
-      clearTimeout(killTimer);
       const lines = stdout
         .split(/\r?\n/)
         .map((l) => l.trim())
@@ -157,13 +170,13 @@ function runPythonBridge(job, cfg, log, extra = {}) {
       try {
         const parsed = JSON.parse(last);
         if (parsed && typeof parsed === "object") {
-          resolve(parsed);
+          finish(parsed);
           return;
         }
       } catch {
         /* fall through */
       }
-      resolve({
+      finish({
         ok: false,
         status: "python_bad_output",
         error:
