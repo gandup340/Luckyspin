@@ -53,7 +53,7 @@ function milkywayConfig() {
 }
 
 function orionConfig() {
-  const timeoutMs = Number(process.env.ORION_TIMEOUT_MS || 90000);
+  const timeoutMs = Number(process.env.ORION_TIMEOUT_MS || 75000);
   return {
     enabled: String(process.env.ORION_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
     loginUrl: String(process.env.ORION_LOGIN_URL || "https://orionstars.vip:8781/default.aspx").trim(),
@@ -116,6 +116,29 @@ async function loadPlaywright() {
 /**
  * Run Lucky/juwa_python/juwa_login_add.py (your captcha lives in solve_captcha.py).
  */
+function killPythonTree(child) {
+  if (!child) return;
+  const pid = child.pid;
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+      return;
+    }
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+  } catch {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function runPythonBridge(job, cfg, log, extra = {}) {
   return new Promise((resolve) => {
     const payload = {
@@ -136,26 +159,23 @@ function runPythonBridge(job, cfg, log, extra = {}) {
       cwd: path.dirname(cfg.pythonScript),
       env: { ...process.env, PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL: "0" },
       windowsHide: true,
+      detached: process.platform !== "win32",
     });
 
     let stdout = "";
     let stderr = "";
     let settled = false;
-    const limitMs = Math.max(20000, Number(cfg.timeoutMs) || 90000);
+    const limitMs = Math.max(20000, Number(cfg.timeoutMs) || 75000);
 
     const finish = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(killTimer);
+      killPythonTree(child);
       resolve(result);
     };
 
     const killTimer = setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        /* ignore */
-      }
       finish({
         ok: false,
         status: "timeout",

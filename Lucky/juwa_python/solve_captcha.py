@@ -136,14 +136,25 @@ def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> s
     purple = preprocess_captcha(image)
     prefer_dark = style in ("dark", "aspnet", "orion", "milkyway") or n >= 5
 
-    for img in (big, image, dark, purple):
+    # ASP.NET captcha: one ddddocr pass. Extra runs stall Render and can OOM the web process.
+    if prefer_dark:
         try:
-            add_guess(_ocr_dddd(img))
+            add_guess(_ocr_dddd(big))
         except Exception:
             pass
-    for processed in (dark, purple) if prefer_dark else (purple, dark):
+        for processed in (dark, purple):
+            try:
+                add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
+            except Exception:
+                pass
+    else:
+        for img in (image, purple):
+            try:
+                add_guess(_ocr_dddd(img))
+            except Exception:
+                pass
         try:
-            add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
+            add_guess(pytesseract.image_to_string(purple, config=_OCR_CONFIG))
         except Exception:
             pass
 

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 from typing import Any
@@ -53,6 +54,8 @@ def launch_browser(p: Any, headed: bool) -> Any:
     os.environ["PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL"] = "0"
     args = [
         "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--renderer-process-limit=1",
         "--ignore-certificate-errors",
         "--no-sandbox",
         "--disable-blink-features=AutomationControlled",
@@ -73,7 +76,6 @@ def launch_browser(p: Any, headed: bool) -> Any:
 def new_browser_context(browser: Any) -> Any:
     context = browser.new_context(
         viewport={"width": 1280, "height": 800},
-        device_scale_factor=2,
         ignore_https_errors=True,
         user_agent=CHROME_UA,
         locale="en-US",
@@ -269,7 +271,10 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         return f"Could not find Orion login fields ({page_hint(page)})"
 
     last_err = "captcha failed"
-    for attempt in range(8):
+    deadline = time.time() + 55
+    for attempt in range(4):
+        if time.time() > deadline:
+            return "Login timed out on captcha. Try again."
         if not still_on_login(page):
             return None
         ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
@@ -279,7 +284,7 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         try:
             code = solve_captcha(
                 page,
-                {"expected_len": 5, "login_url": login_url, "max_attempts": 3, "style": "aspnet"},
+                {"expected_len": 5, "login_url": login_url, "max_attempts": 1, "style": "aspnet"},
             )
         except Exception as err:  # noqa: BLE001
             last_err = f"solve_captcha failed: {err}"
@@ -863,7 +868,7 @@ def main() -> int:
     agent_user = str(job.get("agentUsername") or env("ORION_AGENT_USERNAME"))
     agent_pass = str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD"))
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
-    timeout_ms = int(job.get("timeoutMs") or env("JUWA_TIMEOUT_MS", "45000") or 45000)
+    timeout_ms = int(job.get("timeoutMs") or env("ORION_TIMEOUT_MS") or env("JUWA_TIMEOUT_MS", "75000") or 75000)
     amount_str = str(int(amount) if float(amount).is_integer() else amount)
 
     if not target or amount <= 0:
@@ -872,6 +877,22 @@ def main() -> int:
     if not agent_user or not agent_pass:
         emit({"ok": False, "status": "misconfigured", "error": "Orion agent credentials missing"})
         return 1
+
+    def hard_stop() -> None:
+        try:
+            emit({"ok": False, "status": "timeout", "error": "Orion add timed out. Try again."})
+        except Exception:  # noqa: BLE001
+            pass
+        os._exit(1)
+
+    killer = threading.Timer(max(25.0, timeout_ms / 1000.0 - 8.0), hard_stop)
+    killer.daemon = True
+    killer.start()
+
+    def done(result: dict, code: int) -> int:
+        killer.cancel()
+        emit(result)
+        return code
 
     try:
         with sync_playwright() as p:
@@ -891,26 +912,19 @@ def main() -> int:
 
             login_err = login_orion(page, login_url, agent_user, agent_pass, solve_captcha)
             if login_err:
-                emit({"ok": False, "status": "login_failed", "error": login_err})
-                browser.close()
-                return 1
+                return done({"ok": False, "status": "login_failed", "error": login_err}, 1)
 
             dismiss_overlays(page)
             store_err = go_to_store(page, store_url)
             if store_err:
-                emit({"ok": False, "status": "store_failed", "error": store_err})
-                browser.close()
-                return 1
+                return done({"ok": False, "status": "store_failed", "error": store_err}, 1)
 
             result = search_and_recharge(page, store_url, target, amount_str, alerts)
-            browser.close()
-            emit(result)
-            return 0 if result.get("ok") else 1
+            return done(result, 0 if result.get("ok") else 1)
 
     except Exception as err:  # noqa: BLE001
         eprint(traceback.format_exc())
-        emit({"ok": False, "status": "crash", "error": str(err)})
-        return 1
+        return done({"ok": False, "status": "crash", "error": str(err)}, 1)
 
 
 if __name__ == "__main__":

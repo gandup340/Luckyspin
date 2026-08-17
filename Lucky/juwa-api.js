@@ -177,7 +177,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
                 status: "timeout",
                 error: "Add-funds took too long. Try again.",
               }),
-            100000
+            game === "orion" ? 85000 : 100000
           );
         }),
       ]);
