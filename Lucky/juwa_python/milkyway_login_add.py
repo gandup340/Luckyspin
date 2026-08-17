@@ -413,7 +413,7 @@ def main() -> int:
     job = read_job()
     target = str(job.get("targetUsername") or "").strip()
     amount = float(job.get("amount") or 0)
-    login_url = str(job.get("loginUrl") or env("MILKYWAY_LOGIN_URL", "https://milkywayapp.xyz:8781/"))
+    login_url = str(job.get("loginUrl") or env("MILKYWAY_LOGIN_URL", "https://milkywayapp.xyz:8781/default.aspx?639225872727471705"))
     store_url = str(job.get("storeUrl") or env("MILKYWAY_STORE_URL", "https://milkywayapp.xyz:8781/Store.aspx"))
     agent_user = str(job.get("agentUsername") or env("MILKYWAY_AGENT_USERNAME"))
     agent_pass = str(job.get("agentPassword") or env("MILKYWAY_AGENT_PASSWORD"))

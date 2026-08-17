@@ -30,7 +30,7 @@ function milkywayConfig() {
   const timeoutMs = Number(process.env.MILKYWAY_TIMEOUT_MS || 90000);
   return {
     enabled: String(process.env.MILKYWAY_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
-    loginUrl: String(process.env.MILKYWAY_LOGIN_URL || "https://milkywayapp.xyz:8781/").trim(),
+    loginUrl: String(process.env.MILKYWAY_LOGIN_URL || "https://milkywayapp.xyz:8781/default.aspx?639225872727471705").trim(),
     storeUrl: String(process.env.MILKYWAY_STORE_URL || "https://milkywayapp.xyz:8781/Store.aspx").trim(),
     username: String(process.env.MILKYWAY_AGENT_USERNAME || "").trim(),
     password: String(process.env.MILKYWAY_AGENT_PASSWORD || ""),
