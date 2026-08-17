@@ -1,15 +1,27 @@
 const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount, parseFollowUpGame } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
-const { runAddFunds, juwaConfig, milkywayConfig } = require("./juwa-automation");
-const { gameLabel, askGameText } = require("./fund-games");
+const { runAddFunds, juwaConfig, milkywayConfig, gamevaultConfig } = require("./juwa-automation");
+const { gameLabel, askGameText, isSupportedGame, supportedGameIds } = require("./fund-games");
 
 const ASK_AMOUNT = "How much should we add? Reply with the amount (example: 20).";
 const ASK_USERNAME = "What is your username? Reply with your account.";
 const PLAYER_ADDED_REPLY = "added";
 
-function autoProcessEnabled() {
-  const raw = String(process.env.JUWA_AUTO_PROCESS || "1").trim();
-  return raw !== "0" && raw.toLowerCase() !== "false";
+function envFlagOn(name, defaultOn = true) {
+  const raw = String(process.env[name] ?? (defaultOn ? "1" : "")).trim().toLowerCase();
+  if (!raw) return defaultOn;
+  return raw !== "0" && raw !== "false" && raw !== "off";
+}
+
+function autoProcessEnabled(gameId) {
+  const g = String(gameId || "").toLowerCase();
+  if (g === "gamevault" && String(process.env.GAMEVAULT_AUTO_PROCESS || "").trim() !== "") {
+    return envFlagOn("GAMEVAULT_AUTO_PROCESS");
+  }
+  if (g === "milkyway" && String(process.env.MILKYWAY_AUTO_PROCESS || "").trim() !== "") {
+    return envFlagOn("MILKYWAY_AUTO_PROCESS");
+  }
+  return envFlagOn("JUWA_AUTO_PROCESS");
 }
 
 function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, postSupportReply }) {
@@ -107,8 +119,8 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     username = String(username || row.username || "").trim();
     amount = Number(amount != null ? amount : row.amount);
     const game = String(gameArg || row.game || "").toLowerCase();
-    if (!game || !["juwa", "milkyway"].includes(game)) {
-      const err = "Which game is required — reply juwa or milkyway";
+    if (!game || !isSupportedGame(game)) {
+      const err = `Which game is required — reply ${supportedGameIds().join(" or ")}`;
       store.updateRequest(rowId, { status: "needs_info", error: err, missing: ["game"] });
       await replyNotAddedErrorToPlayer(store.getRequest(rowId), admin, err);
       return { ok: false, error: err };
@@ -235,6 +247,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       const cfg = milkywayConfig();
       return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "MilkyWay" };
     }
+    if (gameId === "gamevault") {
+      const cfg = gamevaultConfig();
+      return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "GameVault" };
+    }
     const cfg = juwaConfig();
     return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "Juwa" };
   }
@@ -245,7 +261,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     const game = String(row.game || "").toLowerCase();
     if (!game || !username || !Number.isFinite(amount) || amount <= 0) return row;
 
-    if (!autoProcessEnabled()) {
+    if (!autoProcessEnabled(game)) {
       await replyAskPlayer(
         row,
         "Got it — waiting for support to confirm (auto-process off).",
@@ -403,6 +419,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
   app.get("/api/admin/juwa/status", auth, (_req, res) => {
     const cfg = juwaConfig();
     const mw = milkywayConfig();
+    const gv = gamevaultConfig();
     res.json({
       automationEnabled: cfg.enabled,
       autoProcess: autoProcessEnabled(),
@@ -413,9 +430,17 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       headed: cfg.headed,
       milkyway: {
         automationEnabled: mw.enabled,
+        autoProcess: autoProcessEnabled("milkyway"),
         credentialsConfigured: Boolean(mw.username && mw.password),
         loginUrl: mw.loginUrl,
         storeUrl: mw.storeUrl,
+      },
+      gamevault: {
+        automationEnabled: gv.enabled,
+        autoProcess: autoProcessEnabled("gamevault"),
+        credentialsConfigured: Boolean(gv.username && gv.password),
+        loginUrl: gv.loginUrl,
+        userMgmtUrl: gv.userMgmtUrl,
       },
     });
   });
@@ -459,7 +484,12 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       message: created.reused ? "Reused existing request" : "Created from chat",
     });
 
-    res.json({ ...created, parsed });
+    let request = created.request;
+    if (parsed.ok && request && !created.error) {
+      request = await startAddIfReady(request, actorName(req), "Auto-started from chat (no admin confirm)");
+    }
+
+    res.json({ ...created, request, parsed });
   });
 
   app.get("/api/admin/juwa/requests", auth, (req, res) => {
@@ -557,9 +587,9 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         request: row,
       });
     }
-    if (!game || !["juwa", "milkyway"].includes(game)) {
+    if (!game || !isSupportedGame(game)) {
       return res.status(400).json({
-        error: "Confirm requires a game (juwa or milkyway).",
+        error: `Confirm requires a game (${supportedGameIds().join(" or ")}).`,
         request: row,
       });
     }

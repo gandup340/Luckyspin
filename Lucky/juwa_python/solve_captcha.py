@@ -78,22 +78,85 @@ def preprocess_captcha(image: Image.Image) -> Image.Image:
     return Image.fromarray(255 - up)
 
 
-def read_digits(image: Image.Image, expected_len: int = 4) -> str:
+def preprocess_dark_digits(image: Image.Image) -> Image.Image:
+    """GameVault-style: keep large dark digits, drop speckle and the wavy line."""
+    rgb = np.array(image.convert("RGB"))
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    cutoff = int(np.percentile(blur, 32))
+    mask = (blur < max(70, cutoff)).astype("uint8") * 255
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 5)))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+    nlab, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    h, _w = mask.shape
+    keep = []
+    for i in range(1, nlab):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        if area < 18 or ch < h * 0.28:
+            continue
+        keep.append((int(stats[i, cv2.CC_STAT_LEFT]), i, ch))
+    if len(keep) > 4:
+        keep = sorted(keep, key=lambda t: t[2], reverse=True)[:4]
+    keep.sort()
+    out = np.zeros_like(mask)
+    if keep:
+        for _x, i, _h in keep:
+            out[labels == i] = 255
+    else:
+        out = mask
+    up = cv2.resize(out, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
+    return Image.fromarray(255 - up)
+
+
+def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> str:
     n = int(expected_len or 4)
+    guesses: list[str] = []
+
+    def add_guess(raw: str) -> None:
+        digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:n]
+        if len(digits) == n:
+            guesses.append(digits)
+
     buf = BytesIO()
     image.convert("RGB").save(buf, format="PNG")
     try:
-        raw = str(_ddddocr().classification(buf.getvalue()) or "")
-        digits = "".join(ch for ch in raw if ch.isdigit())[:n]
-        if len(digits) == n:
-            return digits
+        ocr = _ddddocr()
+        try:
+            ocr.set_ranges("0123456789")
+        except Exception:
+            pass
+        add_guess(ocr.classification(buf.getvalue()))
     except Exception:
-        digits = ""
+        pass
 
-    processed = preprocess_captcha(image)
-    tess = pytesseract.image_to_string(processed, config=_OCR_CONFIG)
-    tess_digits = "".join(ch for ch in tess if ch.isdigit())[:n]
-    return tess_digits if len(tess_digits) == n else digits
+    processed = preprocess_dark_digits(image) if style == "dark" else preprocess_captcha(image)
+    try:
+        add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
+    except Exception:
+        pass
+    if style == "dark":
+        try:
+            buf2 = BytesIO()
+            processed.convert("RGB").save(buf2, format="PNG")
+            add_guess(_ddddocr().classification(buf2.getvalue()))
+        except Exception:
+            pass
+        try:
+            add_guess(pytesseract.image_to_string(preprocess_captcha(image), config=_OCR_CONFIG))
+        except Exception:
+            pass
+
+    if not guesses:
+        return ""
+    # Prefer a value that at least two engines agree on.
+    counts: dict[str, int] = {}
+    for g in guesses:
+        counts[g] = counts.get(g, 0) + 1
+    best = max(counts.items(), key=lambda kv: kv[1])
+    if best[1] >= 2:
+        return best[0]
+    return guesses[0]
 
 
 def _captcha_image_locator(page: Any) -> Any | None:
@@ -126,8 +189,21 @@ def captcha_present(page: Any) -> bool:
 
 
 def _image_from_locator(page: Any, loc: Any) -> Image.Image:
-    """Use the img's natural pixels (not the smaller CSS screenshot)."""
+    """Prefer on-screen pixels; disable animations so the captcha can be captured."""
     loc.wait_for(state="visible")
+    try:
+        loc.evaluate(
+            """el => el.complete && el.naturalWidth
+              ? true
+              : new Promise(r => { el.onload = () => r(true); setTimeout(() => r(true), 1500); })"""
+        )
+    except Exception:
+        pass
+    try:
+        png = loc.screenshot(type="png", animations="disabled", timeout=5000)
+        return Image.open(BytesIO(png)).convert("RGB")
+    except Exception:
+        pass
     data_url = loc.evaluate(
         """el => {
           if (!el.complete || !el.naturalWidth) return null;
@@ -141,14 +217,8 @@ def _image_from_locator(page: Any, loc: Any) -> Image.Image:
     if data_url:
         raw = base64.b64decode(data_url.split(",", 1)[1])
         return Image.open(BytesIO(raw)).convert("RGB")
-
-    src = loc.get_attribute("src")
-    if src:
-        resp = page.request.get(urljoin(page.url, src))
-        if resp.ok:
-            return Image.open(BytesIO(resp.body())).convert("RGB")
-
-    return Image.open(BytesIO(loc.screenshot())).convert("RGB")
+    png = loc.screenshot(type="png", timeout=5000)
+    return Image.open(BytesIO(png)).convert("RGB")
 
 
 def find_captcha_input(page: Any) -> Any | None:
@@ -196,10 +266,16 @@ def solve_captcha(page: Any, ctx: dict | None = None) -> str:
             image.save(_LAST_PNG)
         except OSError:
             pass
-        last = read_digits(image, expected_len=expected_len)
+        last = read_digits(image, expected_len=expected_len, style=str((ctx or {}).get("style") or ""))
         if len(last) == expected_len:
             return last
-        loc.click()
+        try:
+            loc.click(force=True, timeout=2000)
+        except Exception:
+            try:
+                loc.evaluate("el => el.click()")
+            except Exception:
+                pass
         page.wait_for_timeout(400)
 
     raise RuntimeError(f"OCR did not return {expected_len} digits (got {last!r})")

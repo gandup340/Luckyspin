@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/allow-gamevault-recharge.js",
+        "matcher": "gamevault_login_add"
+      }
+    ]
+  }
+}

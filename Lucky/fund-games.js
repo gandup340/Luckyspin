@@ -11,6 +11,11 @@ const GAMES = {
     label: "MilkyWay",
     aliases: ["milkyway", "milky way", "milky-way", "milky", "mw"],
   },
+  gamevault: {
+    id: "gamevault",
+    label: "GameVault",
+    aliases: ["gamevault", "game vault", "game-vault", "gvault", "gv"],
+  },
 };
 
 function allAliases() {
@@ -19,6 +24,14 @@ function allAliases() {
 
 function gameLabel(id) {
   return GAMES[id]?.label || "Juwa";
+}
+
+function supportedGameIds() {
+  return Object.keys(GAMES);
+}
+
+function isSupportedGame(id) {
+  return Boolean(GAMES[String(id || "").toLowerCase()]);
 }
 
 function parseGameId(text) {
@@ -39,9 +52,9 @@ function parseGameId(text) {
 }
 
 function askGameText(username) {
-  const options = Object.values(GAMES)
-    .map((g) => g.id)
-    .join(" or ");
+  const ids = Object.values(GAMES).map((g) => g.id);
+  const options =
+    ids.length <= 2 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids[ids.length - 1]}`;
   const who = String(username || "").trim();
   if (who) return `Which game for ${who}? Reply ${options}.`;
   return `Which game? Reply ${options}.`;
@@ -53,4 +66,6 @@ module.exports = {
   gameLabel,
   parseGameId,
   askGameText,
+  supportedGameIds,
+  isSupportedGame,
 };

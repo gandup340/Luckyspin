@@ -8,13 +8,21 @@
 const { spawn } = require("child_process");
 const path = require("path");
 
+function envUnquote(value) {
+  const s = String(value || "");
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
 function juwaConfig() {
   return {
     enabled: String(process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
     loginUrl: String(process.env.JUWA_LOGIN_URL || "https://ht.juwa777.com/login").trim(),
     userMgmtUrl: String(process.env.JUWA_USER_MGMT_URL || "https://ht.juwa777.com/userManagement").trim(),
-    username: String(process.env.JUWA_AGENT_USERNAME || "").trim(),
-    password: String(process.env.JUWA_AGENT_PASSWORD || ""),
+    username: envUnquote(process.env.JUWA_AGENT_USERNAME || "").trim(),
+    password: envUnquote(process.env.JUWA_AGENT_PASSWORD || ""),
     headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
     timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 180000),
     captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 300000),
@@ -32,8 +40,8 @@ function milkywayConfig() {
     enabled: String(process.env.MILKYWAY_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
     loginUrl: String(process.env.MILKYWAY_LOGIN_URL || "https://milkywayapp.xyz:8781/default.aspx?639225872727471705").trim(),
     storeUrl: String(process.env.MILKYWAY_STORE_URL || "https://milkywayapp.xyz:8781/Store.aspx").trim(),
-    username: String(process.env.MILKYWAY_AGENT_USERNAME || "").trim(),
-    password: String(process.env.MILKYWAY_AGENT_PASSWORD || ""),
+    username: envUnquote(process.env.MILKYWAY_AGENT_USERNAME || "").trim(),
+    password: envUnquote(process.env.MILKYWAY_AGENT_PASSWORD || ""),
     headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
     timeoutMs,
     captchaWaitMs: timeoutMs,
@@ -44,8 +52,27 @@ function milkywayConfig() {
   };
 }
 
+function gamevaultConfig() {
+  const timeoutMs = Number(process.env.GAMEVAULT_TIMEOUT_MS || process.env.JUWA_TIMEOUT_MS || 90000);
+  return {
+    enabled: String(process.env.GAMEVAULT_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
+    loginUrl: String(process.env.GAMEVAULT_LOGIN_URL || "https://agent.gamevault999.com/login").trim(),
+    userMgmtUrl: String(process.env.GAMEVAULT_USER_MGMT_URL || "https://agent.gamevault999.com/userManagement").trim(),
+    username: envUnquote(process.env.GAMEVAULT_AGENT_USERNAME || "").trim(),
+    password: envUnquote(process.env.GAMEVAULT_AGENT_PASSWORD || ""),
+    headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
+    timeoutMs,
+    captchaWaitMs: timeoutMs,
+    pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
+    pythonScript: String(
+      process.env.GAMEVAULT_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "gamevault_login_add.py")
+    ).trim(),
+  };
+}
+
 function gameConfig(game) {
   if (game === "milkyway") return milkywayConfig();
+  if (game === "gamevault") return gamevaultConfig();
   return juwaConfig();
 }
 
@@ -202,6 +229,37 @@ async function runAddFunds(job) {
       return { ok: false, status: "invalid", error: "Valid MilkyWay username and amount are required." };
     }
     log("Using Python MilkyWay bridge (search → Update → Recharge)");
+    return runPythonBridge(job, cfg, log);
+  }
+  if (game === "gamevault") {
+    const cfg = gamevaultConfig();
+    const log = (s) => {
+      try {
+        job.onStatus?.(s);
+      } catch {
+        /* ignore */
+      }
+    };
+    if (!cfg.enabled) {
+      return {
+        ok: false,
+        status: "disabled",
+        error: "GameVault automation is disabled. Set GAMEVAULT_AUTOMATION_ENABLED=1 or JUWA_AUTOMATION_ENABLED=1.",
+      };
+    }
+    if (!cfg.username || !cfg.password) {
+      return {
+        ok: false,
+        status: "misconfigured",
+        error: "GameVault agent credentials missing. Set GAMEVAULT_AGENT_USERNAME and GAMEVAULT_AGENT_PASSWORD.",
+      };
+    }
+    const targetUser = String(job.username || "").trim();
+    const amount = Number(job.amount);
+    if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, status: "invalid", "error": "Valid GameVault username and amount are required." };
+    }
+    log("Using Python GameVault bridge (search → editor → Recharge)");
     return runPythonBridge(job, cfg, log);
   }
   return runJuwaAddFunds(job);
@@ -527,6 +585,7 @@ async function runJuwaAddFunds(job) {
 module.exports = {
   juwaConfig,
   milkywayConfig,
+  gamevaultConfig,
   gameConfig,
   runJuwaAddFunds,
   runAddFunds,
