@@ -928,6 +928,8 @@ def main() -> int:
     store_url = str(job.get("storeUrl") or env("ORION_STORE_URL", STORE_DEFAULT))
     agent_user = unquote_cred(str(job.get("agentUsername") or env("ORION_AGENT_USERNAME"))).strip()
     agent_pass = unquote_cred(str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD")))
+    if agent_pass and not agent_pass.endswith("#"):
+        agent_pass += "#"
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
     timeout_ms = int(job.get("timeoutMs") or env("ORION_TIMEOUT_MS") or env("JUWA_TIMEOUT_MS", "75000") or 75000)
     amount_str = str(int(amount) if float(amount).is_integer() else amount)

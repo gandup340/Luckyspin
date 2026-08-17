@@ -59,7 +59,11 @@ function orionConfig() {
     loginUrl: String(process.env.ORION_LOGIN_URL || "https://orionstars.vip:8781/default.aspx").trim(),
     storeUrl: String(process.env.ORION_STORE_URL || "https://orionstars.vip:8781/Store.aspx").trim(),
     username: envUnquote(process.env.ORION_AGENT_USERNAME || "").trim(),
-    password: envUnquote(process.env.ORION_AGENT_PASSWORD || ""),
+    password: (() => {
+      const password = envUnquote(process.env.ORION_AGENT_PASSWORD || "");
+      // Render / env-file parsers treat # as a comment and drop the last character.
+      return password && !password.endsWith("#") ? `${password}#` : password;
+    })(),
     headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
     timeoutMs,
     captchaWaitMs: timeoutMs,
