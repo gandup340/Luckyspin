@@ -6,6 +6,11 @@ const GAMES = {
     label: "Juwa",
     aliases: ["juwa", "juwa777"],
   },
+  juwa2: {
+    id: "juwa2",
+    label: "Juwa 2",
+    aliases: ["juwa2", "juwa 2", "juwa-2"],
+  },
   milkyway: {
     id: "milkyway",
     label: "MilkyWay",
@@ -40,17 +45,21 @@ function isSupportedGame(id) {
 }
 
 function parseGameId(text) {
-  const raw = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const raw = String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
   if (!raw) return null;
   if (GAMES[raw]) return raw;
-  for (const g of Object.values(GAMES)) {
-    for (const alias of g.aliases) {
-      const a = alias.toLowerCase();
-      if (raw === a) return g.id;
-      if (a.includes(" ") && raw.includes(a)) return g.id;
-      if (!a.includes(" ") && new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(raw)) {
-        return g.id;
-      }
+  const aliases = Object.values(GAMES).flatMap((g) =>
+    g.aliases.map((alias) => ({ id: g.id, alias: String(alias).toLowerCase() }))
+  );
+  aliases.sort((a, b) => b.alias.length - a.alias.length);
+  for (const { id, alias } of aliases) {
+    if (raw === alias) return id;
+    if (alias.includes(" ") && raw.includes(alias)) return id;
+    if (!alias.includes(" ") && new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(raw)) {
+      return id;
     }
   }
   return null;

@@ -44,6 +44,27 @@ function juwaConfig() {
   };
 }
 
+function juwa2Config() {
+  const timeoutMs = Number(process.env.JUWA2_TIMEOUT_MS || process.env.JUWA_TIMEOUT_MS || 90000);
+  return {
+    enabled: String(process.env.JUWA2_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
+    loginUrl: String(process.env.JUWA2_LOGIN_URL || "https://agent.juwa2.com/login").trim(),
+    userMgmtUrl: String(process.env.JUWA2_USER_MGMT_URL || "https://agent.juwa2.com/userManagement").trim(),
+    username: envUnquote(process.env.JUWA2_AGENT_USERNAME || "").trim(),
+    password: envUnquote(process.env.JUWA2_AGENT_PASSWORD || ""),
+    headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
+    timeoutMs,
+    captchaWaitMs: Number(process.env.JUWA2_CAPTCHA_WAIT_MS || process.env.JUWA_CAPTCHA_WAIT_MS || timeoutMs),
+    pythonBridge: String(process.env.JUWA2_PYTHON_BRIDGE || process.env.JUWA_PYTHON_BRIDGE || "1").trim() !== "0",
+    pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
+    pythonScript: String(
+      process.env.JUWA2_PYTHON_SCRIPT ||
+        process.env.JUWA_PYTHON_SCRIPT ||
+        path.join(__dirname, "juwa_python", "juwa_login_add.py")
+    ).trim(),
+  };
+}
+
 function milkywayConfig() {
   const timeoutMs = Number(process.env.MILKYWAY_TIMEOUT_MS || 90000);
   return {
@@ -102,6 +123,7 @@ function gameConfig(game) {
   if (game === "milkyway") return milkywayConfig();
   if (game === "gamevault") return gamevaultConfig();
   if (game === "orion") return orionConfig();
+  if (game === "juwa2") return juwa2Config();
   return juwaConfig();
 }
 
@@ -262,6 +284,37 @@ function looksLikeCaptcha(pageContent, url) {
  */
 async function runAddFunds(job) {
   const game = String(job.game || "juwa").toLowerCase();
+  if (game === "juwa2") {
+    const cfg = juwa2Config();
+    const log = (s) => {
+      try {
+        job.onStatus?.(s);
+      } catch {
+        /* ignore */
+      }
+    };
+    if (!cfg.enabled) {
+      return {
+        ok: false,
+        status: "disabled",
+        error: "Juwa 2 automation is disabled. Set JUWA2_AUTOMATION_ENABLED=1 or JUWA_AUTOMATION_ENABLED=1.",
+      };
+    }
+    if (!cfg.username || !cfg.password) {
+      return {
+        ok: false,
+        status: "misconfigured",
+        error: "Juwa 2 agent credentials missing. Set JUWA2_AGENT_USERNAME and JUWA2_AGENT_PASSWORD.",
+      };
+    }
+    const targetUser = String(job.username || "").trim();
+    const amount = Number(job.amount);
+    if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, status: "invalid", error: "Valid Juwa 2 username and amount are required." };
+    }
+    log("Using Python Juwa 2 bridge (captcha + recharge)");
+    return runPythonBridge(job, cfg, log);
+  }
   if (game === "milkyway") {
     const cfg = milkywayConfig();
     const log = (s) => {
@@ -677,6 +730,7 @@ async function runJuwaAddFunds(job) {
 
 module.exports = {
   juwaConfig,
+  juwa2Config,
   milkywayConfig,
   gamevaultConfig,
   orionConfig,

@@ -529,7 +529,7 @@
           <header class="panel-head row">
             <div>
               <h2>Add-funds ops</h2>
-              <p>Chat requests for Juwa and MilkyWay. Auto-add replies with the game name.</p>
+              <p>Chat requests for Juwa, Juwa 2, MilkyWay, GameVault, and Orion. Auto-add replies with the game name.</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-juwa-btn">Refresh</button>
           </header>
@@ -576,12 +576,19 @@
         <p class="eyebrow">Add funds</p>
         <h2 id="juwa-modal-title">Add-funds request</h2>
         <p class="juwa-modal-lead" id="juwa-modal-lead">
-          Juwa, MilkyWay, GameVault, and Orion auto-run when username, amount, and game are present.
+          Juwa, Juwa 2, MilkyWay, GameVault, and Orion auto-run when username, amount, and game are present.
           The player gets “added … on Game” or “not added: …”. Use Run automation only if auto-process is off.
         </p>
         <label>
           Game
-          <input id="juwa-modal-game" type="text" maxlength="32" autocomplete="off" placeholder="juwa, milkyway, gamevault, or orion" />
+          <select id="juwa-modal-game">
+            <option value="">Select game</option>
+            <option value="juwa">Juwa</option>
+            <option value="juwa2">Juwa 2</option>
+            <option value="milkyway">MilkyWay</option>
+            <option value="gamevault">GameVault</option>
+            <option value="orion">Orion</option>
+          </select>
         </label>
         <label>
           Username

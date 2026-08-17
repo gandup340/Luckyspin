@@ -1,6 +1,6 @@
 const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount, parseFollowUpGame } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
-const { runAddFunds, juwaConfig, milkywayConfig, gamevaultConfig, orionConfig } = require("./juwa-automation");
+const { runAddFunds, juwaConfig, juwa2Config, milkywayConfig, gamevaultConfig, orionConfig } = require("./juwa-automation");
 const { gameLabel, askGameText, isSupportedGame, supportedGameIds } = require("./fund-games");
 
 const ASK_AMOUNT = "How much should we add? Reply with the amount (example: 20).";
@@ -15,6 +15,9 @@ function envFlagOn(name, defaultOn = true) {
 
 function autoProcessEnabled(gameId) {
   const g = String(gameId || "").toLowerCase();
+  if (g === "juwa2" && String(process.env.JUWA2_AUTO_PROCESS || "").trim() !== "") {
+    return envFlagOn("JUWA2_AUTO_PROCESS");
+  }
   if (g === "gamevault" && String(process.env.GAMEVAULT_AUTO_PROCESS || "").trim() !== "") {
     return envFlagOn("GAMEVAULT_AUTO_PROCESS");
   }
@@ -267,6 +270,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       const cfg = orionConfig();
       return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "Orion" };
     }
+    if (gameId === "juwa2") {
+      const cfg = juwa2Config();
+      return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "Juwa 2" };
+    }
     if (gameId === "gamevault") {
       const cfg = gamevaultConfig();
       return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "GameVault" };
@@ -441,6 +448,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     const mw = milkywayConfig();
     const gv = gamevaultConfig();
     const orion = orionConfig();
+    const juwa2 = juwa2Config();
     res.json({
       automationEnabled: cfg.enabled,
       autoProcess: autoProcessEnabled(),
@@ -449,6 +457,13 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       loginUrl: cfg.loginUrl,
       userMgmtUrl: cfg.userMgmtUrl,
       headed: cfg.headed,
+      juwa2: {
+        automationEnabled: juwa2.enabled,
+        autoProcess: autoProcessEnabled("juwa2"),
+        credentialsConfigured: Boolean(juwa2.username && juwa2.password),
+        loginUrl: juwa2.loginUrl,
+        userMgmtUrl: juwa2.userMgmtUrl,
+      },
       milkyway: {
         automationEnabled: mw.enabled,
         autoProcess: autoProcessEnabled("milkyway"),
