@@ -109,12 +109,30 @@ def contexts(page: Any):
             yield fr
 
 
+def unquote_cred(value: str) -> str:
+    s = str(value or "")
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        return s[1:-1]
+    return s
+
+
 def fill_first(page: Any, selectors: list[str], value: str) -> bool:
     for ctx in contexts(page):
         for sel in selectors:
             loc = ctx.locator(sel).first
             if loc.count() > 0:
                 loc.fill(value, force=True, timeout=2500)
+                try:
+                    loc.evaluate(
+                        """(el, v) => {
+                          el.value = v;
+                          el.dispatchEvent(new Event('input', { bubbles: true }));
+                          el.dispatchEvent(new Event('change', { bubbles: true }));
+                        }""",
+                        value,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
                 return True
     return False
 
@@ -244,19 +262,58 @@ def open_login_page(page: Any, login_url: str) -> str | None:
     return f"Could not find Orion login fields ({page_hint(page)})"
 
 
+def overlay_text(page: Any) -> str:
+    chunks: list[str] = []
+    for ctx in contexts(page):
+        for sel in (
+            "#alertOverlay",
+            "#alertOverlay .alert-content",
+            "#mb_msg",
+            "#lblMsg",
+            "#lblError",
+            ".alert-overlay",
+        ):
+            loc = ctx.locator(sel).first
+            if loc.count() == 0:
+                continue
+            try:
+                t = (loc.inner_text() or "").replace("\n", " ").strip()
+            except Exception:  # noqa: BLE001
+                t = ""
+            if t and t not in chunks:
+                chunks.append(t)
+    return " | ".join(chunks)[:220]
+
+
 def login_page_hint(page: Any) -> str:
+    alert = overlay_text(page)
+    body = ""
     try:
-        t = (page.locator("body").inner_text() or "").replace("\n", " ").strip()[:220]
+        body = (page.locator("body").inner_text() or "").replace("\n", " ").strip()[:220]
     except Exception:  # noqa: BLE001
-        return ""
-    low = t.lower()
-    if any(s in low for s in ("verification", "verify code", "invalid code", "wrong code")):
+        body = ""
+    # Form labels always include Username/Password — only classify from the alert.
+    low = (alert or body).lower()
+    captcha_kw = (
+        "verification",
+        "verify code",
+        "invalid code",
+        "wrong code",
+        "incorrect code",
+        "code error",
+        "validate code",
+        "验证",
+    )
+    if any(s in low for s in captcha_kw):
         return "wrong captcha"
-    if any(s in low for s in ("password", "account", "username", "user name")) and any(
-        s in low for s in ("invalid", "incorrect", "wrong", "fail")
+    alert_low = alert.lower()
+    if alert_low and any(s in alert_low for s in ("password", "account", "username", "user name")) and any(
+        s in alert_low for s in ("invalid", "incorrect", "wrong", "fail")
     ):
         return "wrong credentials"
-    return t[:80]
+    if alert:
+        return alert[:80]
+    return body[:80]
 
 
 def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
@@ -277,6 +334,7 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
             return "Login timed out on captcha. Try again."
         if not still_on_login(page):
             return None
+        dismiss_overlays(page)
         ok_user = fill_first(page, LOGIN_USER_SELS, agent_user)
         ok_pass = fill_first(page, LOGIN_PASS_SELS, agent_pass)
         if not ok_user or not ok_pass:
@@ -284,7 +342,7 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         try:
             code = solve_captcha(
                 page,
-                {"expected_len": 5, "login_url": login_url, "max_attempts": 1, "style": "aspnet"},
+                {"expected_len": 5, "login_url": login_url, "max_attempts": 3, "style": "aspnet"},
             )
         except Exception as err:  # noqa: BLE001
             last_err = f"solve_captcha failed: {err}"
@@ -305,7 +363,7 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         if left:
             return None
         hint = login_page_hint(page)
-        last_err = f"Still on Orion login after submit ({hint or 'wrong code or credentials'})"
+        last_err = f"Still on Orion login after submit ({hint or 'wrong code or credentials'}); agent={agent_user}"
         eprint(f"[orion] {last_err}")
         img = page.locator("#imgCode, #imgVerify, #Image1, img[src*='ValidateCode' i]").first
         if img.count() > 0:
@@ -865,8 +923,8 @@ def main() -> int:
     amount = float(job.get("amount") or 0)
     login_url = str(job.get("loginUrl") or env("ORION_LOGIN_URL", LOGIN_PREFERRED))
     store_url = str(job.get("storeUrl") or env("ORION_STORE_URL", STORE_DEFAULT))
-    agent_user = str(job.get("agentUsername") or env("ORION_AGENT_USERNAME"))
-    agent_pass = str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD"))
+    agent_user = unquote_cred(str(job.get("agentUsername") or env("ORION_AGENT_USERNAME"))).strip()
+    agent_pass = unquote_cred(str(job.get("agentPassword") or env("ORION_AGENT_PASSWORD")))
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
     timeout_ms = int(job.get("timeoutMs") or env("ORION_TIMEOUT_MS") or env("JUWA_TIMEOUT_MS", "75000") or 75000)
     amount_str = str(int(amount) if float(amount).is_integer() else amount)

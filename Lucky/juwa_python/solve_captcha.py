@@ -23,17 +23,17 @@ _LAST_PNG = _DIR / "captcha_last.png"
 _OCR_CONFIG = "--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789"
 
 _CAPTCHA_IMG_SELECTORS = [
+    "#imgCode",
+    'img[src*="ValidateCode" i]',
+    'img[src*="validcode" i]',
+    "#imgVerify",
+    "#Image1",
     'img[src*="captcha" i]',
     'img[alt*="captcha" i]',
     'img[src*="/api/agent/captcha"]',
-    'img[src*="ValidateCode" i]',
     'img[src*="verify" i]',
-    'img[src*="validcode" i]',
     "#captcha img",
     ".captcha img",
-    "#imgCode",
-    "#imgVerify",
-    "#Image1",
     'img[id*="code" i]',
     'img[id*="valid" i]',
     'img[id*="verify" i]',
@@ -88,18 +88,21 @@ def preprocess_dark_digits(image: Image.Image, expected_len: int = 4) -> Image.I
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 5)))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
     nlab, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    h, _w = mask.shape
+    h, w = mask.shape
     keep = []
     for i in range(1, nlab):
         area = int(stats[i, cv2.CC_STAT_AREA])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
         if area < 18 or ch < h * 0.28:
+            continue
+        # Strike-through / wave spans most of the image; digits are narrow.
+        if cw >= int(w * 0.45):
             continue
         keep.append((int(stats[i, cv2.CC_STAT_LEFT]), i, ch))
     nkeep = max(4, int(expected_len or 4))
     if len(keep) > nkeep:
         keep = sorted(keep, key=lambda t: t[2], reverse=True)[:nkeep]
-    keep.sort()
     out = np.zeros_like(mask)
     if keep:
         for _x, i, _h in keep:
@@ -110,15 +113,26 @@ def preprocess_dark_digits(image: Image.Image, expected_len: int = 4) -> Image.I
     return Image.fromarray(255 - up)
 
 
+def _normalize_digits(raw: str, n: int) -> str:
+    t = str(raw or "").translate(
+        str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "Z": "2", "S": "5", "s": "5", "B": "8"})
+    )
+    return "".join(ch for ch in t if ch.isdigit())[:n]
+
+
 def _ocr_dddd(image: Image.Image) -> str:
     buf = BytesIO()
     image.convert("RGB").save(buf, format="PNG")
+    raw = buf.getvalue()
     ocr = _ddddocr()
-    try:
-        ocr.set_ranges("0123456789")
-    except Exception:
-        pass
-    return str(ocr.classification(buf.getvalue()) or "")
+    text = str(ocr.classification(raw) or "")
+    if not any(ch.isdigit() for ch in text):
+        try:
+            ocr.set_ranges("0123456789")
+            text = str(ocr.classification(raw) or "")
+        except Exception:
+            pass
+    return text
 
 
 def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> str:
@@ -126,29 +140,31 @@ def read_digits(image: Image.Image, expected_len: int = 4, style: str = "") -> s
     guesses: list[str] = []
 
     def add_guess(raw: str) -> None:
-        digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:n]
+        digits = _normalize_digits(raw, n)
         if len(digits) == n:
             guesses.append(digits)
 
-    w, h = image.size
-    big = image.convert("RGB").resize((max(w * 3, 180), max(h * 3, 54)), Image.Resampling.NEAREST)
-    dark = preprocess_dark_digits(image, expected_len=n)
-    purple = preprocess_captcha(image)
+    rgb = image.convert("RGB")
+    w, h = rgb.size
     prefer_dark = style in ("dark", "aspnet", "orion", "milkyway") or n >= 5
-
-    # ASP.NET captcha: one ddddocr pass. Extra runs stall Render and can OOM the web process.
+    # ddddocr wants the original bitmap. Upscaled/inverted copies often return ''.
+    dddd_imgs = [rgb]
+    if w < 140 or h < 40:
+        dddd_imgs.append(rgb.resize((max(w * 2, 160), max(h * 2, 48)), Image.Resampling.LANCZOS))
     if prefer_dark:
-        try:
-            add_guess(_ocr_dddd(big))
-        except Exception:
-            pass
-        for processed in (dark, purple):
+        dark = preprocess_dark_digits(rgb, expected_len=n)
+        for img in dddd_imgs:
             try:
-                add_guess(pytesseract.image_to_string(processed, config=_OCR_CONFIG))
+                add_guess(_ocr_dddd(img))
             except Exception:
                 pass
+        try:
+            add_guess(pytesseract.image_to_string(dark, config=_OCR_CONFIG))
+        except Exception:
+            pass
     else:
-        for img in (image, purple):
+        purple = preprocess_captcha(rgb)
+        for img in (*dddd_imgs, purple):
             try:
                 add_guess(_ocr_dddd(img))
             except Exception:
@@ -210,8 +226,43 @@ def captcha_present(page: Any) -> bool:
     return inp is not None and inp.count() > 0
 
 
+def _open_image_bytes(raw: bytes) -> Image.Image | None:
+    if not raw:
+        return None
+    try:
+        img = Image.open(BytesIO(raw))
+        img.load()
+        return img.convert("RGB")
+    except Exception:
+        return None
+
+
+def _image_from_src(page: Any, loc: Any) -> Image.Image | None:
+    """Raw ValidateCode.aspx / captcha URL is cleaner than a screenshot."""
+    src = ""
+    try:
+        src = loc.get_attribute("src") or ""
+    except Exception:
+        src = ""
+    if not src:
+        return None
+    if src.startswith("data:image"):
+        try:
+            return _open_image_bytes(base64.b64decode(src.split(",", 1)[1]))
+        except Exception:
+            return None
+    url = src if src.lower().startswith("http") else urljoin(page.url, src)
+    try:
+        resp = page.request.get(url, timeout=8000)
+        if resp.ok:
+            return _open_image_bytes(resp.body())
+    except Exception:
+        return None
+    return None
+
+
 def _image_from_locator(page: Any, loc: Any) -> Image.Image:
-    """Prefer on-screen pixels; disable animations so the captcha can be captured."""
+    """Read the image already on screen. Fetching ValidateCode.aspx again would rotate the code."""
     loc.wait_for(state="visible")
     try:
         loc.evaluate(
@@ -222,29 +273,45 @@ def _image_from_locator(page: Any, loc: Any) -> Image.Image:
     except Exception:
         pass
     try:
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(150)
     except Exception:
         pass
+    data_url = None
+    try:
+        data_url = loc.evaluate(
+            """el => {
+              if (!el.complete || !el.naturalWidth) return null;
+              const c = document.createElement('canvas');
+              c.width = el.naturalWidth;
+              c.height = el.naturalHeight;
+              c.getContext('2d').drawImage(el, 0, 0);
+              return c.toDataURL('image/png');
+            }"""
+        )
+    except Exception:
+        data_url = None
+    if data_url:
+        try:
+            img = _open_image_bytes(base64.b64decode(data_url.split(",", 1)[1]))
+            if img is not None and min(img.size) >= 10:
+                return img
+        except Exception:
+            pass
     try:
         png = loc.screenshot(type="png", animations="disabled", timeout=5000, scale="css")
-        return Image.open(BytesIO(png)).convert("RGB")
+        img = _open_image_bytes(png)
+        if img is not None and min(img.size) >= 10:
+            return img
     except Exception:
         pass
-    data_url = loc.evaluate(
-        """el => {
-          if (!el.complete || !el.naturalWidth) return null;
-          const c = document.createElement('canvas');
-          c.width = el.naturalWidth;
-          c.height = el.naturalHeight;
-          c.getContext('2d').drawImage(el, 0, 0);
-          return c.toDataURL('image/png');
-        }"""
-    )
-    if data_url:
-        raw = base64.b64decode(data_url.split(",", 1)[1])
-        return Image.open(BytesIO(raw)).convert("RGB")
+    from_src = _image_from_src(page, loc)
+    if from_src is not None and min(from_src.size) >= 10:
+        return from_src
     png = loc.screenshot(type="png", timeout=5000)
-    return Image.open(BytesIO(png)).convert("RGB")
+    img = _open_image_bytes(png)
+    if img is None:
+        raise RuntimeError("Captcha image could not be decoded")
+    return img
 
 
 def find_captcha_input(page: Any) -> Any | None:
@@ -286,13 +353,14 @@ def solve_captcha(page: Any, ctx: dict | None = None) -> str:
 
     last = ""
     attempts = int((ctx or {}).get("max_attempts") or 3)
+    style = str((ctx or {}).get("style") or "")
     for attempt in range(max(1, attempts)):
         image = _image_from_locator(page, loc)
         try:
             image.save(_LAST_PNG)
         except OSError:
             pass
-        last = read_digits(image, expected_len=expected_len, style=str((ctx or {}).get("style") or ""))
+        last = read_digits(image, expected_len=expected_len, style=style)
         if len(last) == expected_len:
             return last
         try:
