@@ -363,7 +363,10 @@ def login_orion(page: Any, login_url: str, agent_user: str, agent_pass: str, sol
         if left:
             return None
         hint = login_page_hint(page)
-        last_err = f"Still on Orion login after submit ({hint or 'wrong code or credentials'}); agent={agent_user}"
+        last_err = (
+            f"Still on Orion login after submit ({hint or 'wrong code or credentials'}); "
+            f"agent={agent_user} passLen={len(agent_pass)}"
+        )
         eprint(f"[orion] {last_err}")
         img = page.locator("#imgCode, #imgVerify, #Image1, img[src*='ValidateCode' i]").first
         if img.count() > 0:
