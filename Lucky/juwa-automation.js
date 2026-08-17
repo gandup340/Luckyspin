@@ -58,9 +58,7 @@ function juwa2Config() {
     pythonBridge: String(process.env.JUWA2_PYTHON_BRIDGE || process.env.JUWA_PYTHON_BRIDGE || "1").trim() !== "0",
     pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
     pythonScript: String(
-      process.env.JUWA2_PYTHON_SCRIPT ||
-        process.env.JUWA_PYTHON_SCRIPT ||
-        path.join(__dirname, "juwa_python", "juwa_login_add.py")
+      process.env.JUWA2_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "gamevault_login_add.py")
     ).trim(),
   };
 }
@@ -312,8 +310,8 @@ async function runAddFunds(job) {
     if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
       return { ok: false, status: "invalid", error: "Valid Juwa 2 username and amount are required." };
     }
-    log("Using Python Juwa 2 bridge (captcha + recharge)");
-    return runPythonBridge(job, cfg, log);
+    log("Using Python Juwa 2 bridge (agent panel search → Editor → Recharge)");
+    return runPythonBridge(job, cfg, log, { brand: "Juwa 2", game: "juwa2" });
   }
   if (game === "milkyway") {
     const cfg = milkywayConfig();

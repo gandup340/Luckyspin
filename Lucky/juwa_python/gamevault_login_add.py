@@ -79,7 +79,7 @@ def still_on_login(page: Any) -> bool:
     return page.locator('input[placeholder="Username"], input[placeholder="Password"]').count() > 0
 
 
-def login_gamevault(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any) -> str | None:
+def login_gamevault(page: Any, login_url: str, agent_user: str, agent_pass: str, solve_captcha: Any, brand: str = "GameVault") -> str | None:
     eprint(f"[gamevault] open login {login_url}")
     page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
     try:
@@ -111,7 +111,7 @@ def login_gamevault(page: Any, login_url: str, agent_user: str, agent_pass: str,
         agent_pass,
     )
     if not ok_user or not ok_pass:
-        return "Could not find GameVault login fields"
+        return f"Could not find {brand} login fields"
 
     last_err = "captcha failed"
     img = page.locator('img[src*="captcha" i]').first
@@ -158,17 +158,41 @@ def login_gamevault(page: Any, login_url: str, agent_user: str, agent_pass: str,
             eprint(f"[gamevault] captcha attempt {attempt + 1}: {last_err}")
             wait_for_new_captcha(src_before, click_refresh=True)
             continue
-        texts = page.locator('input.el-input__inner[type="text"]')
-        box = texts.nth(texts.count() - 1) if texts.count() >= 2 else None
-        if box is None:
-            box = page.locator(
-                'input[placeholder*="code" i], input[placeholder*="captcha" i], input[placeholder*="verif" i]'
-            ).first
+        box = page.locator(
+            'input[placeholder="Please enter the verification code"], '
+            'input[placeholder*="captcha" i], '
+            'input[placeholder*="verification code" i]:not([placeholder*="google" i]), '
+            'input[placeholder*="code" i]:not([placeholder*="google" i])'
+        ).first
         if box is None or box.count() == 0:
-            return "Could not find GameVault captcha field"
-        box.click(force=True, timeout=2000)
-        box.fill("")
-        box.type(code, delay=25)
+            texts = page.locator('input.el-input__inner[type="text"]')
+            for i in range(texts.count()):
+                el = texts.nth(i)
+                ph = (el.get_attribute("placeholder") or "").lower()
+                if "google" in ph or "username" in ph or "account" in ph:
+                    continue
+                if "code" in ph or "captcha" in ph or "verif" in ph:
+                    box = el
+                    break
+        if box is None or box.count() == 0:
+            return f"Could not find {brand} captcha field"
+        try:
+            box.click(force=True, timeout=2000)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            box.fill("")
+            box.type(code, delay=25)
+        except Exception:  # noqa: BLE001
+            box.evaluate(
+                """(el, v) => {
+                  el.focus();
+                  el.value = v;
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                code,
+            )
         eprint(f"[gamevault] filled code {code}, login attempt {attempt + 1}")
         btn = page.locator('button.el-button--primary:has-text("Login")').first
         try:
@@ -186,10 +210,21 @@ def login_gamevault(page: Any, login_url: str, agent_user: str, agent_pass: str,
             toast = (page.locator(".el-message, .el-message__content").last.inner_text() or "").strip()
         except Exception:  # noqa: BLE001
             toast = ""
-        last_err = "Still on GameVault login after submit (wrong code or credentials)"
+        last_err = f"Still on {brand} login after submit (wrong code or credentials)"
         if toast:
             last_err = f"{last_err}: {toast}"
         eprint(f"[gamevault] {last_err}")
+        low = toast.lower()
+        if any(
+            tok in low
+            for tok in (
+                "password error",
+                "password verification failed",
+                "wrong password",
+                "incorrect password",
+            )
+        ):
+            return last_err
         wait_for_new_captcha(src_before, click_refresh=captcha_src() == src_before)
     return last_err
 
@@ -331,14 +366,14 @@ def confirm_recharge_if_needed(page: Any) -> None:
         page.wait_for_timeout(800)
 
 
-def search_and_recharge(page: Any, user_mgmt: str, target: str, amount: float) -> dict:
+def search_and_recharge(page: Any, user_mgmt: str, target: str, amount: float, brand: str = "GameVault", game_id: str = "gamevault") -> dict:
     amount_str = str(int(amount) if float(amount).is_integer() else amount)
     store_url = user_mgmt or USER_MGMT_DEFAULT
     eprint(f"[gamevault] open {store_url} search={target} amount={amount_str}")
     page.goto(store_url, wait_until="domcontentloaded", timeout=20000)
     page.wait_for_timeout(1200)
     if still_on_login(page):
-        return {"ok": False, "status": "login_failed", "error": "Redirected to GameVault login on userManagement"}
+        return {"ok": False, "status": "login_failed", "error": f"Redirected to {brand} login on userManagement"}
     dismiss_popups(page)
 
     search = page.get_by_placeholder("Search by Account")
@@ -462,14 +497,14 @@ def search_and_recharge(page: Any, user_mgmt: str, target: str, amount: float) -
     toast = page_toast(page)
     low = toast.lower()
     if any(tok in low for tok in ("error", "fail", "incorrect", "invalid", "not enough")):
-        err = toast or "GameVault recharge did not succeed"
+        err = toast or f"{brand} recharge did not succeed"
         return {"ok": False, "status": "recharge_failed", "error": err, "detail": err}
 
     return {
         "ok": True,
         "status": "success",
-        "game": "gamevault",
-        "detail": f"added {amount_str} to {target} on GameVault",
+        "game": game_id,
+        "detail": f"added {amount_str} to {target} on {brand}",
         "toast": toast,
     }
 
@@ -501,6 +536,8 @@ def main() -> int:
     user_mgmt = str(job.get("userMgmtUrl") or env("GAMEVAULT_USER_MGMT_URL", USER_MGMT_DEFAULT))
     agent_user = str(job.get("agentUsername") or env("GAMEVAULT_AGENT_USERNAME"))
     agent_pass = str(job.get("agentPassword") or env("GAMEVAULT_AGENT_PASSWORD"))
+    brand = str(job.get("brand") or "GameVault")
+    game_id = str(job.get("game") or "gamevault")
     headed = bool(job.get("headed", env("JUWA_HEADED", "0") != "0"))
     timeout_ms = int(job.get("timeoutMs") or env("GAMEVAULT_TIMEOUT_MS") or env("JUWA_TIMEOUT_MS") or 90000)
 
@@ -508,7 +545,7 @@ def main() -> int:
         emit({"ok": False, "status": "invalid", "error": "targetUsername and positive amount required"})
         return 1
     if not agent_user or not agent_pass:
-        emit({"ok": False, "status": "misconfigured", "error": "GameVault agent credentials missing"})
+        emit({"ok": False, "status": "misconfigured", "error": f"{brand} agent credentials missing"})
         return 1
 
     try:
@@ -526,13 +563,13 @@ def main() -> int:
             page.set_default_timeout(min(timeout_ms, 20000))
             page.on("dialog", lambda dialog: dialog.accept())
 
-            login_err = login_gamevault(page, login_url, agent_user, agent_pass, solve_captcha)
+            login_err = login_gamevault(page, login_url, agent_user, agent_pass, solve_captcha, brand)
             if login_err:
                 emit({"ok": False, "status": "login_failed", "error": login_err})
                 browser.close()
                 return 1
 
-            result = search_and_recharge(page, user_mgmt, target, amount)
+            result = search_and_recharge(page, user_mgmt, target, amount, brand, game_id)
             browser.close()
             emit(result)
             return 0 if result.get("ok") else 1
