@@ -1,8 +1,9 @@
 /**
- * Pure chat → Juwa fund-request detection (no I/O).
- * Never guesses: both username and amount must be clearly present
- * (or a single strong game-id + amount after filtering noise words).
+ * Pure chat → fund-request detection (no I/O).
+ * Never guesses: game, username, and amount must be clearly present.
  */
+
+const { parseGameId } = require("./fund-games");
 
 const STOP_WORDS = new Set(
   [
@@ -23,6 +24,10 @@ const STOP_WORDS = new Set(
     "username",
     "account",
     "juwa",
+    "juwa2",
+    "milkyway",
+    "milky",
+    "way",
     "for",
     "the",
     "and",
@@ -97,9 +102,10 @@ function extractUsernames(text) {
     if (m[1] && isPlausibleUsername(m[1])) found.add(m[1]);
   }
 
-  // "add to juwa USER" / "juwa USER ..."
-  const juwaNear = t.matchAll(/\bjuwa\b[^a-zA-Z0-9_]{0,16}([a-zA-Z][a-zA-Z0-9_]{2,31})\b/gi) || [];
-  for (const m of juwaNear) {
+  // "add to juwa USER" / "juwa USER ..." / "milkyway USER"
+  const gameNear =
+    t.matchAll(/\b(?:juwa|milky\s*way|milkyway|milky)\b[^a-zA-Z0-9_]{0,16}([a-zA-Z][a-zA-Z0-9_]{2,31})\b/gi) || [];
+  for (const m of gameNear) {
     if (m[1] && isPlausibleUsername(m[1])) found.add(m[1]);
   }
 
@@ -137,8 +143,8 @@ function extractAmounts(text) {
     /(?:\$)\s*(\d+(?:\.\d{1,2})?)/g,
     /\b(\d+(?:\.\d{1,2})?)\s*(?:\$|usd|dollars?|bucks)\b/gi,
     /\bamount\s*[:=]?\s*(\d+(?:\.\d{1,2})?)/gi,
-    /\bjuwa\b(?:\s+\S+){0,4}\s+(\d+(?:\.\d{1,2})?)\b/gi,
-    /\b(?:add|juwa|deposit|fund|recharge).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
+    /\b(?:juwa|milkyway|milky)\b(?:\s+\S+){0,4}\s+(\d+(?:\.\d{1,2})?)\b/gi,
+    /\b(?:add|juwa|milkyway|deposit|fund|recharge).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
   ];
   for (const re of patterns) {
     for (const m of t.matchAll(re)) {
@@ -147,7 +153,7 @@ function extractAmounts(text) {
     }
   }
   // Last-token bare number if message mentions juwa/add and a username-like token
-  if (/\bjuwa\b/i.test(t) || /\b(add|deposit|fund|recharge)\b/i.test(t)) {
+  if (/\bjuwa\b/i.test(t) || /\bmilkyway\b/i.test(t) || /\b(add|deposit|fund|recharge)\b/i.test(t)) {
     const last = t.match(/(?:^|\s)(\d+(?:\.\d{1,2})?)(?:\s*[!.]*)?$/);
     if (last) {
       const a = parseAmount(last[1]);
@@ -165,15 +171,23 @@ function looksLikeJuwaFundRequest(text) {
   const hasVerb = /\b(add|deposit|fund|funds|load|top\s*up|credit|recharge|balance|put)\b/.test(t);
 
   if (/\bjuwa\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
+  if (/\b(?:milkyway|milky(?:[\s-]?way)?)\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
   if (hasVerb && amounts.length) return true;
   if (hasVerb && users.length) return true;
   if (users.length && amounts.length) return true;
   return false;
 }
 
+function parseFollowUpGame(text) {
+  const raw = String(text || "").trim();
+  if (!raw || raw.split(/\s+/).length > 4) return null;
+  return parseGameId(raw);
+}
+
 function parseFollowUpUsername(text) {
   const raw = normalizeText(text);
   if (!raw) return null;
+  if (parseGameId(raw)) return null;
   if (isGameStyleId(raw) || (isPlausibleUsername(raw) && raw.split(/\s+/).length === 1)) {
     return raw;
   }
@@ -202,16 +216,19 @@ function parseJuwaFundRequest(text) {
   const picked = pickBestUsername(usernamesRaw);
   const amounts = extractAmounts(raw);
 
+  const game = parseGameId(raw);
+
   if (!intent) {
     return {
       ok: false,
       intent: false,
+      game: null,
       username: null,
       amount: null,
       missing: [],
       usernames: picked.usernames,
       amounts,
-      reason: "Not a Juwa fund request",
+      reason: "Not a fund request",
     };
   }
 
@@ -222,28 +239,31 @@ function parseJuwaFundRequest(text) {
   if (!username) {
     missing.push(picked.ambiguous ? "username (multiple candidates — verify)" : "username");
   }
+  if (!game) missing.push("game");
 
   if (amounts.length === 1) amount = amounts[0];
   else if (amounts.length === 0) missing.push("amount");
   else missing.push("amount (multiple candidates — verify)");
 
-  const ok = Boolean(username && amount && missing.length === 0);
+  const ok = Boolean(game && username && amount && missing.length === 0);
   return {
     ok,
     intent: true,
+    game,
     username,
     amount,
     missing,
     usernames: picked.usernames.length ? picked.usernames : usernamesRaw,
     amounts,
-    reason: ok ? "Ready to add on Juwa" : `Need: ${missing.join(", ") || "unclear request"}`,
+    reason: ok ? `Ready to add on ${game}` : `Need: ${missing.join(", ") || "unclear request"}`,
   };
 }
 
-function fingerprintRequest({ conversationId, messageId, username, amount }) {
+function fingerprintRequest({ conversationId, messageId, username, amount, game }) {
   return [
     String(conversationId || ""),
     String(messageId || ""),
+    String(game || ""),
     String(username || "").toLowerCase(),
     String(amount ?? ""),
   ].join("|");
@@ -258,6 +278,8 @@ module.exports = {
   fingerprintRequest,
   parseFollowUpUsername,
   parseFollowUpAmount,
+  parseFollowUpGame,
+  parseGameId,
   looksLikeJuwaFundRequest,
   isGameStyleId,
 };

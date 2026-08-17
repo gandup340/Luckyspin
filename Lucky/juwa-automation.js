@@ -26,6 +26,28 @@ function juwaConfig() {
   };
 }
 
+function milkywayConfig() {
+  return {
+    enabled: String(process.env.MILKYWAY_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
+    loginUrl: String(process.env.MILKYWAY_LOGIN_URL || "https://milkywayapp.xyz:8781/").trim(),
+    storeUrl: String(process.env.MILKYWAY_STORE_URL || "https://milkywayapp.xyz:8781/Store.aspx").trim(),
+    username: String(process.env.MILKYWAY_AGENT_USERNAME || "").trim(),
+    password: String(process.env.MILKYWAY_AGENT_PASSWORD || ""),
+    headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
+    timeoutMs: Number(process.env.JUWA_TIMEOUT_MS || 180000),
+    captchaWaitMs: Number(process.env.JUWA_CAPTCHA_WAIT_MS || 300000),
+    pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
+    pythonScript: String(
+      process.env.MILKYWAY_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "milkyway_login_add.py")
+    ).trim(),
+  };
+}
+
+function gameConfig(game) {
+  if (game === "milkyway") return milkywayConfig();
+  return juwaConfig();
+}
+
 function maskUser(u) {
   if (!u) return "";
   if (u.length <= 2) return "*";
@@ -47,17 +69,19 @@ async function loadPlaywright() {
 /**
  * Run Lucky/juwa_python/juwa_login_add.py (your captcha lives in solve_captcha.py).
  */
-function runJuwaPythonBridge(job, cfg, log) {
+function runPythonBridge(job, cfg, log, extra = {}) {
   return new Promise((resolve) => {
     const payload = {
       targetUsername: String(job.username || "").trim(),
       amount: Number(job.amount),
       loginUrl: cfg.loginUrl,
       userMgmtUrl: cfg.userMgmtUrl,
+      storeUrl: cfg.storeUrl,
       agentUsername: cfg.username,
       agentPassword: cfg.password,
       headed: cfg.headed,
       timeoutMs: cfg.timeoutMs,
+      ...extra,
     };
 
     log(`Python bridge: ${cfg.pythonBin} ${path.basename(cfg.pythonScript)}`);
@@ -146,6 +170,42 @@ function looksLikeCaptcha(pageContent, url) {
  *   shouldAbort?: () => boolean,
  * }} job
  */
+async function runAddFunds(job) {
+  const game = String(job.game || "juwa").toLowerCase();
+  if (game === "milkyway") {
+    const cfg = milkywayConfig();
+    const log = (s) => {
+      try {
+        job.onStatus?.(s);
+      } catch {
+        /* ignore */
+      }
+    };
+    if (!cfg.enabled) {
+      return {
+        ok: false,
+        status: "disabled",
+        error: "MilkyWay automation is disabled. Set MILKYWAY_AUTOMATION_ENABLED=1 or JUWA_AUTOMATION_ENABLED=1.",
+      };
+    }
+    if (!cfg.username || !cfg.password) {
+      return {
+        ok: false,
+        status: "misconfigured",
+        error: "MilkyWay agent credentials missing. Set MILKYWAY_AGENT_USERNAME and MILKYWAY_AGENT_PASSWORD.",
+      };
+    }
+    const targetUser = String(job.username || "").trim();
+    const amount = Number(job.amount);
+    if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, status: "invalid", error: "Valid MilkyWay username and amount are required." };
+    }
+    log("Using Python MilkyWay bridge (search → Update → Recharge)");
+    return runPythonBridge(job, cfg, log);
+  }
+  return runJuwaAddFunds(job);
+}
+
 async function runJuwaAddFunds(job) {
   const cfg = juwaConfig();
   const log = (s) => {
@@ -179,7 +239,7 @@ async function runJuwaAddFunds(job) {
 
   if (cfg.pythonBridge) {
     log("Using Python Juwa bridge (captcha + recharge)");
-    return runJuwaPythonBridge(job, cfg, log);
+    return runPythonBridge(job, cfg, log);
   }
 
   const playwright = await loadPlaywright();
@@ -465,6 +525,9 @@ async function runJuwaAddFunds(job) {
 
 module.exports = {
   juwaConfig,
+  milkywayConfig,
+  gameConfig,
   runJuwaAddFunds,
+  runAddFunds,
   looksLikeCaptcha,
 };

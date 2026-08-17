@@ -1325,6 +1325,7 @@
   const juwaModal = document.getElementById("juwa-modal");
   const juwaModalUsername = document.getElementById("juwa-modal-username");
   const juwaModalAmount = document.getElementById("juwa-modal-amount");
+  const juwaModalGame = document.getElementById("juwa-modal-game");
   const juwaModalSource = document.getElementById("juwa-modal-source");
   const juwaModalError = document.getElementById("juwa-modal-error");
   const juwaModalStatus = document.getElementById("juwa-modal-status");
@@ -1339,10 +1340,11 @@
     juwaBanner.hidden = false;
     if (juwaBannerTitle) {
       juwaBannerTitle.textContent =
-        req.status === "needs_info" ? "Juwa request needs verification" : "Juwa fund request detected";
+        req.status === "needs_info" ? "Fund request needs verification" : "Fund request detected";
     }
     if (juwaBannerDetail) {
       const bits = [];
+      if (req.game) bits.push(`Game: ${req.game}`);
       const userLabel = req.username || (Array.isArray(req.usernames) && req.usernames[0]) || null;
       if (userLabel) bits.push(`User: ${userLabel}`);
       if (req.amount != null) bits.push(`Amount: ${req.amount}`);
@@ -1365,6 +1367,7 @@
     if (juwaModalUsername) {
       juwaModalUsername.value = req.username || (Array.isArray(req.usernames) && req.usernames[0]) || "";
     }
+    if (juwaModalGame) juwaModalGame.value = req.game || "";
     if (juwaModalAmount) juwaModalAmount.value = req.amount != null ? String(req.amount) : "";
     if (juwaModalSource) {
       juwaModalSource.value = `Conversation: ${req.conversationId || ""}\n${req.messageText || ""}`;
@@ -1383,7 +1386,7 @@
   async function createJuwaFromMessage(message, textOverride) {
     if (!activeId || !message?.id) return null;
     const text = String(textOverride || message.text || "");
-    if (!/juwa/i.test(text)) return null;
+    if (!/\b(juwa|milkyway|milky|add|recharge|deposit|fund)\b/i.test(text)) return null;
     try {
       const data = await api("/api/admin/juwa/requests", {
         method: "POST",
@@ -1410,7 +1413,7 @@
     const recent = customers.slice(-6);
     const combined = recent.map((m) => String(m.text || "").trim()).filter(Boolean).join("\n");
     const anchor = recent[recent.length - 1];
-    if (anchor && /juwa/i.test(combined)) {
+    if (anchor && /\b(juwa|milkyway|milky|add|recharge|deposit|fund)\b/i.test(combined)) {
       const req = await createJuwaFromMessage(anchor, combined);
       if (req) {
         // Prefill best username if server stored null but parse had candidates in reason — modal still editable
@@ -1434,16 +1437,15 @@
     if (!body) return;
     try {
       const status = await api("/api/admin/juwa/status");
+      const mwOk = status.milkyway?.credentialsConfigured;
+      const juwaOk = status.credentialsConfigured;
+      const autoOn = status.automationEnabled || status.milkyway?.automationEnabled;
       setStatus(
         "juwa-ops-status",
-        status.automationEnabled
-          ? status.credentialsConfigured
-            ? status.autoProcess === false
-              ? "Automation on — auto-process off"
-              : "Automation enabled (auto from customer chat)"
-            : "Automation enabled — set JUWA_AGENT_USERNAME / JUWA_AGENT_PASSWORD on server"
-          : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1)",
-        !status.automationEnabled || !status.credentialsConfigured
+        autoOn
+          ? `Juwa ${juwaOk ? "ready" : "missing creds"} · MilkyWay ${mwOk ? "ready" : "missing creds"} · auto-process ${status.autoProcess === false ? "off" : "on"}`
+          : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1 / MILKYWAY_AUTOMATION_ENABLED=1)",
+        !autoOn || !juwaOk || !mwOk
       );
       const data = await api("/api/admin/juwa/requests?limit=40");
       const rows = data.requests || [];
@@ -1453,6 +1455,7 @@
               const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
               return `<tr>
               <td data-label="When">${esc(when)}</td>
+              <td data-label="Game">${esc(r.game || "—")}</td>
               <td data-label="Username"><code>${esc(r.username || "—")}</code></td>
               <td data-label="Amount">${r.amount != null ? esc(r.amount) : "—"}</td>
               <td data-label="Status">${esc(r.status)}</td>
@@ -1463,7 +1466,7 @@
             </tr>`;
             })
             .join("")
-        : `<tr class="table-empty"><td colspan="6">No Juwa requests yet.</td></tr>`;
+        : `<tr class="table-empty"><td colspan="7">No add-funds requests yet.</td></tr>`;
 
       body.querySelectorAll("[data-juwa-open]").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -1513,6 +1516,7 @@
       if (!juwaActiveRequest?.id) return;
       const username = String(juwaModalUsername?.value || "").trim();
       const amount = Number(juwaModalAmount?.value);
+      const game = String(juwaModalGame?.value || juwaActiveRequest.game || "").trim().toLowerCase();
       if (!username || !Number.isFinite(amount) || amount <= 0) {
         if (juwaModalError) {
           juwaModalError.hidden = false;
@@ -1528,7 +1532,7 @@
       try {
         const data = await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}/mark-added`, {
           method: "POST",
-          body: JSON.stringify({ username, amount }),
+          body: JSON.stringify({ username, amount, game }),
         });
         juwaActiveRequest = data.request || juwaActiveRequest;
         if (juwaModalStatus) {
@@ -1564,6 +1568,7 @@
       if (!juwaActiveRequest?.id) return;
       const username = String(juwaModalUsername?.value || "").trim();
       const amount = Number(juwaModalAmount?.value);
+      const game = String(juwaModalGame?.value || juwaActiveRequest.game || "").trim().toLowerCase();
       if (!username || !Number.isFinite(amount) || amount <= 0) {
         if (juwaModalError) {
           juwaModalError.hidden = false;
@@ -1579,7 +1584,7 @@
       try {
         await api(`/api/admin/juwa/requests/${juwaActiveRequest.id}/confirm`, {
           method: "POST",
-          body: JSON.stringify({ username, amount }),
+          body: JSON.stringify({ username, amount, game }),
         });
         if (juwaModalStatus) {
           juwaModalStatus.hidden = false;

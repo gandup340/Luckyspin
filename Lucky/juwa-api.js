@@ -1,11 +1,11 @@
-const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount } = require("./juwa-parser");
+const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount, parseFollowUpGame } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
-const { runJuwaAddFunds, juwaConfig } = require("./juwa-automation");
+const { runAddFunds, juwaConfig, milkywayConfig } = require("./juwa-automation");
+const { gameLabel, askGameText } = require("./fund-games");
 
-const PLAYER_ADDED_REPLY = "added";
-const ASK_USERNAME =
-  "What is your Juwa username? Reply with your account (example: vvkj1555).";
 const ASK_AMOUNT = "How much should we add? Reply with the amount (example: 20).";
+const ASK_USERNAME = "What is your username? Reply with your account.";
+const PLAYER_ADDED_REPLY = "added";
 
 function autoProcessEnabled() {
   const raw = String(process.env.JUWA_AUTO_PROCESS || "1").trim();
@@ -48,9 +48,40 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     return result;
   }
 
+  function addedReply(row) {
+    const game = gameLabel(row.game);
+    const amount = row.amount;
+    const username = row.username;
+    if (username && amount != null) {
+      return `added ${amount} to ${username} on ${game}`;
+    }
+    return `added on ${game}`;
+  }
+
+  function askUsernameText(gameId) {
+    if (!gameId) return ASK_USERNAME;
+    return `What is your ${gameLabel(gameId)} username? Reply with your account.`;
+  }
+
+  function computeMissing({ game, username, amount }) {
+    const missing = [];
+    if (!(Number(amount) > 0)) missing.push("amount");
+    if (!username) missing.push("username");
+    if (!game) missing.push("game");
+    return missing;
+  }
+
+  function askNextMissing(row, missing) {
+    const need = missing || row.missing || [];
+    if (need.includes("amount")) return ASK_AMOUNT;
+    if (need.includes("username")) return askUsernameText(row.game);
+    if (need.includes("game")) return askGameText(row.username);
+    return ASK_USERNAME;
+  }
+
   async function replyAddedToPlayer(row, admin) {
     if (row.playerRepliedAt) return { ok: true, skipped: true };
-    return replyToPlayerChat(row, PLAYER_ADDED_REPLY, admin, "player_replied");
+    return replyToPlayerChat(row, addedReply(row), admin, "player_replied");
   }
 
   async function replyNotAddedErrorToPlayer(row, admin, errorText) {
@@ -62,7 +93,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
    * Run Juwa add-funds then reply "added" or "not added: …" in the player chat.
    * Fire-and-forget after marking the request running.
    */
-  async function executeJuwaAdd(rowId, { username, amount, admin, auditMessage }) {
+  async function executeJuwaAdd(rowId, { username, amount, admin, auditMessage, game: gameArg }) {
     if (running.has(rowId)) {
       return { ok: false, error: "Already running" };
     }
@@ -75,8 +106,15 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     username = String(username || row.username || "").trim();
     amount = Number(amount != null ? amount : row.amount);
+    const game = String(gameArg || row.game || "").toLowerCase();
+    if (!game || !["juwa", "milkyway"].includes(game)) {
+      const err = "Which game is required — reply juwa or milkyway";
+      store.updateRequest(rowId, { status: "needs_info", error: err, missing: ["game"] });
+      await replyNotAddedErrorToPlayer(store.getRequest(rowId), admin, err);
+      return { ok: false, error: err };
+    }
     if (!username || !Number.isFinite(amount) || amount <= 0) {
-      const err = "Exact Juwa username and positive amount required";
+      const err = "Exact username and positive amount required";
       store.updateRequest(rowId, { status: "needs_info", error: err, missing: ["username", "amount"].filter((k) => (k === "username" ? !username : !(amount > 0))) });
       await replyNotAddedErrorToPlayer(store.getRequest(rowId), admin, err);
       return { ok: false, error: err };
@@ -86,12 +124,13 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     store.updateRequest(rowId, {
       username,
       amount,
+      game,
       status: "running",
       confirmedBy: admin,
       confirmedAt: Date.now(),
       missing: [],
       error: "",
-      reason: "Running Juwa add",
+      reason: `Running ${gameLabel(game)} add`,
     });
     store.addAudit({
       type: "confirmed",
@@ -106,9 +145,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     running.add(rowId);
     try {
-      const result = await runJuwaAddFunds({
+      const result = await runAddFunds({
         username,
         amount,
+        game,
         onStatus: (s) => {
           store.updateRequest(rowId, { reason: String(s || "").slice(0, 240) });
         },
@@ -131,7 +171,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
           conversationId: row.conversationId,
           message: result.detail || "Juwa submit ok",
         });
-        console.log(`[juwa] success request=${rowId} user=${username} amount=${amount} by=${admin}`);
+        console.log(`[${game}] success request=${rowId} user=${username} amount=${amount} by=${admin}`);
         const fresh = store.getRequest(rowId);
         const reply = await replyAddedToPlayer(fresh, admin);
         if (!reply.ok && !reply.skipped) {
@@ -186,14 +226,24 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     return replyToPlayerChat(row, text, admin || "auto", "player_asked");
   }
 
-  function addingNowText(username, amount) {
-    return `Adding ${amount} to ${username} now. I'll reply when it's done.`;
+  function addingNowText(username, amount, gameId) {
+    return `Adding ${amount} to ${username} on ${gameLabel(gameId)} now. I'll reply when it's done.`;
+  }
+
+  function credentialsForGame(gameId) {
+    if (gameId === "milkyway") {
+      const cfg = milkywayConfig();
+      return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "MilkyWay" };
+    }
+    const cfg = juwaConfig();
+    return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "Juwa" };
   }
 
   async function startAddIfReady(row, admin, auditMessage) {
     const username = String(row.username || "").trim();
     const amount = Number(row.amount);
-    if (!username || !Number.isFinite(amount) || amount <= 0) return row;
+    const game = String(row.game || "").toLowerCase();
+    if (!game || !username || !Number.isFinite(amount) || amount <= 0) return row;
 
     if (!autoProcessEnabled()) {
       await replyAskPlayer(
@@ -203,20 +253,21 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       );
       return store.getRequest(row.id);
     }
-    const cfg = juwaConfig();
-    if (!cfg.enabled) {
-      await replyNotAddedErrorToPlayer(row, admin, "Juwa automation disabled on server");
+    const creds = credentialsForGame(game);
+    if (!creds.enabled) {
+      await replyNotAddedErrorToPlayer(row, admin, `${creds.name} automation disabled on server`);
       return store.getRequest(row.id);
     }
-    if (!cfg.username || !cfg.password) {
-      await replyNotAddedErrorToPlayer(row, admin, "Juwa agent credentials not configured");
+    if (!creds.username || !creds.password) {
+      await replyNotAddedErrorToPlayer(row, admin, `${creds.name} agent credentials not configured`);
       return store.getRequest(row.id);
     }
 
-    await replyAskPlayer(row, addingNowText(username, amount), admin);
+    await replyAskPlayer(row, addingNowText(username, amount, game), admin);
     executeJuwaAdd(row.id, {
       username,
       amount,
+      game,
       admin: admin || "auto",
       auditMessage: auditMessage || "Auto-started from customer chat",
     }).catch((err) => console.warn("[juwa] auto execute:", err?.message || err));
@@ -238,22 +289,23 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     if (!parsed.intent) {
       if (!open) return null;
+      const followGame = parseFollowUpGame(single);
       const followUser = parseFollowUpUsername(single);
       const followAmt = parseFollowUpAmount(single);
-      if (!followUser && followAmt == null) return null;
+      if (!followGame && !followUser && followAmt == null) return null;
 
+      const game = followGame || open.game || null;
       const username = followUser || open.username;
       const amount = followAmt != null ? followAmt : open.amount;
-      const missing = [];
-      if (!username) missing.push("username");
-      if (!(Number(amount) > 0)) missing.push("amount");
+      const missing = computeMissing({ game, username, amount });
 
       store.updateRequest(open.id, {
+        game,
         username: username || null,
         amount: Number(amount) > 0 ? amount : open.amount,
         missing,
-        status: username && Number(amount) > 0 ? "pending_review" : "needs_info",
-        reason: missing.length ? `Need: ${missing.join(", ")}` : "Ready to add on Juwa",
+        status: game && username && Number(amount) > 0 ? "pending_review" : "needs_info",
+        reason: missing.length ? `Need: ${missing.join(", ")}` : `Ready to add on ${game}`,
         messageId: msgId || open.messageId,
         messageText: `${open.messageText || ""}\n${single}`.trim().slice(0, 2000),
         error: "",
@@ -269,12 +321,8 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         conversationId: conversation,
         message: "Merged follow-up from customer chat",
       });
-      if (missing.includes("username")) {
-        await replyAskPlayer(row, ASK_USERNAME, "auto");
-        return store.getRequest(row.id);
-      }
-      if (missing.includes("amount")) {
-        await replyAskPlayer(row, ASK_AMOUNT, "auto");
+      if (missing.length) {
+        await replyAskPlayer(row, askNextMissing(row, missing), "auto");
         return store.getRequest(row.id);
       }
       return startAddIfReady(row, "auto", "Completed from chat follow-up");
@@ -292,19 +340,19 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
   async function handleParsedCustomerRequest({ conversationId, messageId, text, parsed, open }) {
     const username = parsed.username || (parsed.usernames && parsed.usernames[0]) || open?.username || null;
     const amount = parsed.amount != null ? parsed.amount : open?.amount;
-    const missing = [];
-    if (!username) missing.push("username");
-    if (!(Number(amount) > 0)) missing.push("amount");
-    const ready = Boolean(username && Number(amount) > 0);
+    const game = parsed.game || open?.game || null;
+    const missing = computeMissing({ game, username, amount });
+    const ready = Boolean(game && username && Number(amount) > 0);
 
     let row;
     if (open) {
       store.updateRequest(open.id, {
+        game,
         username: username || null,
         amount: Number(amount) > 0 ? amount : null,
         missing,
         usernames: parsed.usernames || open.usernames || [],
-        reason: ready ? "Ready to add on Juwa" : `Need: ${missing.join(", ")}`,
+        reason: ready ? `Ready to add on ${game}` : `Need: ${missing.join(", ")}`,
         status: ready ? "pending_review" : "needs_info",
         messageId: messageId || open.messageId,
         messageText: text,
@@ -317,10 +365,11 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         conversationId,
         messageId,
         messageText: text,
+        game,
         username,
         amount: Number(amount) > 0 ? amount : null,
         missing,
-        reason: ready ? "Ready to add on Juwa" : `Need: ${missing.join(", ")}`,
+        reason: ready ? `Ready to add on ${game}` : `Need: ${missing.join(", ")}`,
         usernames: parsed.usernames || [],
       });
       row = created.request;
@@ -344,8 +393,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     }
 
     if (!ready) {
-      if (missing.includes("username")) await replyAskPlayer(row, ASK_USERNAME, "auto");
-      else if (missing.includes("amount")) await replyAskPlayer(row, ASK_AMOUNT, "auto");
+      await replyAskPlayer(row, askNextMissing(row, missing), "auto");
       return store.getRequest(row.id);
     }
 
@@ -354,6 +402,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
   app.get("/api/admin/juwa/status", auth, (_req, res) => {
     const cfg = juwaConfig();
+    const mw = milkywayConfig();
     res.json({
       automationEnabled: cfg.enabled,
       autoProcess: autoProcessEnabled(),
@@ -362,6 +411,12 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       loginUrl: cfg.loginUrl,
       userMgmtUrl: cfg.userMgmtUrl,
       headed: cfg.headed,
+      milkyway: {
+        automationEnabled: mw.enabled,
+        credentialsConfigured: Boolean(mw.username && mw.password),
+        loginUrl: mw.loginUrl,
+        storeUrl: mw.storeUrl,
+      },
     });
   });
 
@@ -386,6 +441,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       conversationId,
       messageId,
       messageText: text,
+      game: parsed.game || null,
       username: parsed.username || (parsed.usernames && parsed.usernames[0]) || null,
       amount: parsed.amount,
       missing: parsed.missing,
@@ -429,8 +485,9 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     let username = String(req.body?.username || row.username || "").trim();
     let amount = req.body?.amount != null ? Number(req.body.amount) : row.amount;
+    const game = String(req.body?.game || row.game || "").toLowerCase();
     if (!username || !Number.isFinite(amount) || amount <= 0) {
-      const err = "Need an exact Juwa username and a positive amount before marking added.";
+      const err = "Need an exact username and a positive amount before marking added.";
       if (row.conversationId) {
         await replyNotAddedErrorToPlayer(row, actorName(req), err).catch(() => {});
       }
@@ -442,6 +499,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     store.updateRequest(row.id, {
       username,
       amount,
+      game: game || row.game || null,
       status: "success",
       confirmedBy: admin,
       confirmedAt: Date.now(),
@@ -475,7 +533,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       ok: true,
       request: store.getRequest(row.id),
       replied: true,
-      message: `Marked added and replied "${PLAYER_ADDED_REPLY}" to player.`,
+      message: `Marked added and replied "${addedReply(store.getRequest(row.id))}" to player.`,
     });
   });
 
@@ -492,9 +550,16 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     let username = String(req.body?.username || row.username || "").trim();
     let amount = req.body?.amount != null ? Number(req.body.amount) : row.amount;
+    const game = String(req.body?.game || row.game || "").toLowerCase();
     if (!username || !Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({
-        error: "Confirm requires an exact Juwa username and a positive amount. Do not guess.",
+        error: "Confirm requires an exact username and a positive amount. Do not guess.",
+        request: row,
+      });
+    }
+    if (!game || !["juwa", "milkyway"].includes(game)) {
+      return res.status(400).json({
+        error: "Confirm requires a game (juwa or milkyway).",
         request: row,
       });
     }
@@ -511,6 +576,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     executeJuwaAdd(row.id, {
       username,
       amount,
+      game,
       admin,
       auditMessage: "Admin confirmed in Lucky software",
     }).catch((err) => console.warn("[juwa] confirm execute:", err?.message || err));

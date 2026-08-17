@@ -67,7 +67,7 @@
           <button type="button" class="nav-btn" data-tab="deposits" data-title="Deposits" data-admin-only>Deposits</button>
           <button type="button" class="nav-btn" data-tab="withdrawals" data-title="Withdrawals" data-admin-only>Withdrawals</button>
           <button type="button" class="nav-btn" data-tab="players" data-title="Players" data-admin-only>Players</button>
-          <button type="button" class="nav-btn" data-tab="juwa" data-title="Juwa ops" data-admin-only>Juwa ops</button>
+          <button type="button" class="nav-btn" data-tab="juwa" data-title="Add funds" data-admin-only>Add funds</button>
         </nav>
         <div class="side-foot">
           <p class="signed-in" id="signed-in"></p>
@@ -528,8 +528,8 @@
         <section class="panel" id="tab-juwa">
           <header class="panel-head row">
             <div>
-              <h2>Juwa ops</h2>
-              <p>Fund requests from chat — admin confirmation required before Juwa submit. CAPTCHA is never auto-solved.</p>
+              <h2>Add-funds ops</h2>
+              <p>Chat requests for Juwa and MilkyWay. Auto-add replies with the game name.</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-juwa-btn">Refresh</button>
           </header>
@@ -539,6 +539,7 @@
               <thead>
                 <tr>
                   <th>When</th>
+                  <th>Game</th>
                   <th>Username</th>
                   <th>Amount</th>
                   <th>Status</th>
@@ -572,14 +573,18 @@
 
     <div class="juwa-modal" id="juwa-modal" hidden>
       <div class="juwa-modal-card" role="dialog" aria-modal="true" aria-labelledby="juwa-modal-title">
-        <p class="eyebrow">Juwa fund add</p>
+        <p class="eyebrow">Add funds</p>
         <h2 id="juwa-modal-title">Confirm before submit</h2>
         <p class="juwa-modal-lead" id="juwa-modal-lead">
-          After you add funds on Juwa, click <strong>Mark added &amp; reply</strong> — the player gets
-          “added” automatically. Use Run automation only if the server browser can reach Juwa.
+          After funds are added, click <strong>Mark added &amp; reply</strong> — the player gets
+          “added … on Juwa/MilkyWay”. Use Run automation if the server browser can reach the agent panel.
         </p>
         <label>
-          Juwa username
+          Game
+          <input id="juwa-modal-game" type="text" maxlength="32" autocomplete="off" placeholder="juwa or milkyway" />
+        </label>
+        <label>
+          Username
           <input id="juwa-modal-username" type="text" maxlength="64" autocomplete="off" />
         </label>
         <label>

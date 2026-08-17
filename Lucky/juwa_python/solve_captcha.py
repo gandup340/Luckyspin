@@ -26,8 +26,17 @@ _CAPTCHA_IMG_SELECTORS = [
     'img[src*="captcha" i]',
     'img[alt*="captcha" i]',
     'img[src*="/api/agent/captcha"]',
+    'img[src*="ValidateCode" i]',
+    'img[src*="verify" i]',
+    'img[src*="validcode" i]',
     "#captcha img",
     ".captcha img",
+    "#imgCode",
+    "#imgVerify",
+    "#Image1",
+    'img[id*="code" i]',
+    'img[id*="valid" i]',
+    'img[id*="verify" i]',
 ]
 
 _CAPTCHA_INPUT_SELECTORS = [
@@ -38,6 +47,9 @@ _CAPTCHA_INPUT_SELECTORS = [
     'input[name*="captcha" i]',
     'input[id*="captcha" i]',
     'input[placeholder*="captcha" i]',
+    "#txtVerifyCode",
+    'input[name="txtVerifyCode"]',
+    'input[placeholder="Code"]',
 ]
 
 
@@ -66,21 +78,22 @@ def preprocess_captcha(image: Image.Image) -> Image.Image:
     return Image.fromarray(255 - up)
 
 
-def read_digits(image: Image.Image) -> str:
+def read_digits(image: Image.Image, expected_len: int = 4) -> str:
+    n = int(expected_len or 4)
     buf = BytesIO()
     image.convert("RGB").save(buf, format="PNG")
     try:
         raw = str(_ddddocr().classification(buf.getvalue()) or "")
-        digits = "".join(ch for ch in raw if ch.isdigit())[:4]
-        if len(digits) == 4:
+        digits = "".join(ch for ch in raw if ch.isdigit())[:n]
+        if len(digits) == n:
             return digits
     except Exception:
         digits = ""
 
     processed = preprocess_captcha(image)
     tess = pytesseract.image_to_string(processed, config=_OCR_CONFIG)
-    tess_digits = "".join(ch for ch in tess if ch.isdigit())[:4]
-    return tess_digits if len(tess_digits) == 4 else digits
+    tess_digits = "".join(ch for ch in tess if ch.isdigit())[:n]
+    return tess_digits if len(tess_digits) == n else digits
 
 
 def _captcha_image_locator(page: Any) -> Any | None:
@@ -88,6 +101,19 @@ def _captcha_image_locator(page: Any) -> Any | None:
         loc = page.locator(sel).first
         if loc.count() > 0:
             return loc
+    inp = find_captcha_input(page)
+    if inp is not None:
+        for xp in ("xpath=following::img[1]", "xpath=../img", "xpath=..//img"):
+            loc = inp.locator(xp).first
+            if loc.count() > 0:
+                return loc
+    imgs = page.locator("img")
+    n = min(imgs.count(), 16)
+    for i in range(n):
+        el = imgs.nth(i)
+        box = el.bounding_box()
+        if box and 40 <= box["width"] <= 240 and 18 <= box["height"] <= 90:
+            return el
     return None
 
 
@@ -157,6 +183,7 @@ def find_captcha_input(page: Any) -> Any | None:
 
 def solve_captcha(page: Any, ctx: dict | None = None) -> str:
     """Read the captcha currently shown on the Playwright login page."""
+    expected_len = int((ctx or {}).get("expected_len") or 4)
     loc = _captcha_image_locator(page)
     if loc is None:
         raise RuntimeError("Captcha image not found on the login page")
@@ -168,13 +195,13 @@ def solve_captcha(page: Any, ctx: dict | None = None) -> str:
             image.save(_LAST_PNG)
         except OSError:
             pass
-        last = read_digits(image)
-        if len(last) == 4:
+        last = read_digits(image, expected_len=expected_len)
+        if len(last) == expected_len:
             return last
         loc.click()
         page.wait_for_timeout(800)
 
-    raise RuntimeError(f"OCR did not return 4 digits (got {last!r})")
+    raise RuntimeError(f"OCR did not return {expected_len} digits (got {last!r})")
 
 
 def get_new_captcha(session: Any | None = None):
