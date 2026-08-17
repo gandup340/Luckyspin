@@ -285,10 +285,23 @@ def wait_for_store_ready(page: Any) -> Any | None:
     return ctx
 
 
+def go_to_store(page: Any, store_url: str) -> str | None:
+    eprint(f"[milkyway] open store {store_url}")
+    try:
+        page.goto(store_url, wait_until="domcontentloaded", timeout=20000)
+    except Exception as err:  # noqa: BLE001
+        return f"MilkyWay Store.aspx would not load ({err})"
+    if still_on_login(page):
+        return "Redirected to MilkyWay login on Store.aspx"
+    return None
+
+
 def search_and_recharge(page: Any, store_url: str, target: str, amount_str: str) -> dict:
     eprint(f"[milkyway] store search {target} amount={amount_str} url={page.url}")
     if "store.aspx" not in page.url.lower():
-        page.goto(store_url, wait_until="domcontentloaded")
+        store_err = go_to_store(page, store_url)
+        if store_err:
+            return {"ok": False, "status": "store_failed", "error": store_err}
     ctx = wait_for_store_ready(page)
     if ctx is None:
         ctx = page
@@ -433,6 +446,12 @@ def main() -> int:
             login_err = login_milkyway(page, login_url, agent_user, agent_pass, solve_captcha)
             if login_err:
                 emit({"ok": False, "status": "login_failed", "error": login_err})
+                browser.close()
+                return 1
+
+            store_err = go_to_store(page, store_url)
+            if store_err:
+                emit({"ok": False, "status": "store_failed", "error": store_err})
                 browser.close()
                 return 1
 
