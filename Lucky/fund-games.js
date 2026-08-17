@@ -16,6 +16,11 @@ const GAMES = {
     label: "GameVault",
     aliases: ["gamevault", "game vault", "game-vault", "gvault", "gv"],
   },
+  orion: {
+    id: "orion",
+    label: "Orion",
+    aliases: ["orion", "orionstar", "orionstars", "orion star", "orion stars"],
+  },
 };
 
 function allAliases() {

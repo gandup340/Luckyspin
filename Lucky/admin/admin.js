@@ -1390,7 +1390,7 @@
   async function createJuwaFromMessage(message, textOverride) {
     if (!activeId || !message?.id) return null;
     const text = String(textOverride || message.text || "");
-    if (!/\b(juwa|milkyway|milky|gamevault|gvault|gv|add|recharge|deposit|fund)\b/i.test(text)) return null;
+    if (!/\b(juwa|milkyway|milky|gamevault|gvault|gv|orion|orionstar|orionstars|add|recharge|deposit|fund)\b/i.test(text)) return null;
     try {
       const data = await api("/api/admin/juwa/requests", {
         method: "POST",
@@ -1417,7 +1417,7 @@
     const recent = customers.slice(-6);
     const combined = recent.map((m) => String(m.text || "").trim()).filter(Boolean).join("\n");
     const anchor = recent[recent.length - 1];
-    if (anchor && /\b(juwa|milkyway|milky|gamevault|gvault|gv|add|recharge|deposit|fund)\b/i.test(combined)) {
+    if (anchor && /\b(juwa|milkyway|milky|gamevault|gvault|gv|orion|orionstar|orionstars|add|recharge|deposit|fund)\b/i.test(combined)) {
       const req = await createJuwaFromMessage(anchor, combined);
       if (req) {
         // Prefill best username if server stored null but parse had candidates in reason — modal still editable
@@ -1443,14 +1443,19 @@
       const status = await api("/api/admin/juwa/status");
       const mwOk = status.milkyway?.credentialsConfigured;
       const gvOk = status.gamevault?.credentialsConfigured;
+      const orionOk = status.orion?.credentialsConfigured;
       const juwaOk = status.credentialsConfigured;
-      const autoOn = status.automationEnabled || status.milkyway?.automationEnabled || status.gamevault?.automationEnabled;
+      const autoOn =
+        status.automationEnabled ||
+        status.milkyway?.automationEnabled ||
+        status.gamevault?.automationEnabled ||
+        status.orion?.automationEnabled;
       setStatus(
         "juwa-ops-status",
         autoOn
-          ? `Juwa ${juwaOk ? "ready" : "missing creds"} · MilkyWay ${mwOk ? "ready" : "missing creds"} · GameVault ${gvOk ? "ready" : "missing creds"} · auto-process ${status.autoProcess === false ? "off" : "on"} (GameVault ${status.gamevault?.autoProcess === false ? "off" : "on"})`
-          : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1 / MILKYWAY_AUTOMATION_ENABLED=1 / GAMEVAULT_AUTOMATION_ENABLED=1)",
-        !autoOn || !juwaOk || !mwOk || !gvOk
+          ? `Juwa ${juwaOk ? "ready" : "missing creds"} · MilkyWay ${mwOk ? "ready" : "missing creds"} · GameVault ${gvOk ? "ready" : "missing creds"} · Orion ${orionOk ? "ready" : "missing creds"} · auto-process ${status.autoProcess === false ? "off" : "on"}`
+          : "Automation disabled (set JUWA_AUTOMATION_ENABLED=1 / MILKYWAY_AUTOMATION_ENABLED=1 / GAMEVAULT_AUTOMATION_ENABLED=1 / ORION_AUTOMATION_ENABLED=1)",
+        !autoOn || !juwaOk || !mwOk || !gvOk || !orionOk
       );
       const data = await api("/api/admin/juwa/requests?limit=40");
       const rows = data.requests || [];

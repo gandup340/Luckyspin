@@ -52,6 +52,24 @@ function milkywayConfig() {
   };
 }
 
+function orionConfig() {
+  const timeoutMs = Number(process.env.ORION_TIMEOUT_MS || 90000);
+  return {
+    enabled: String(process.env.ORION_AUTOMATION_ENABLED || process.env.JUWA_AUTOMATION_ENABLED || "").trim() === "1",
+    loginUrl: String(process.env.ORION_LOGIN_URL || "https://orionstars.vip:8781/default.aspx").trim(),
+    storeUrl: String(process.env.ORION_STORE_URL || "https://orionstars.vip:8781/Store.aspx").trim(),
+    username: envUnquote(process.env.ORION_AGENT_USERNAME || "").trim(),
+    password: envUnquote(process.env.ORION_AGENT_PASSWORD || ""),
+    headed: String(process.env.JUWA_HEADED || "0").trim() !== "0",
+    timeoutMs,
+    captchaWaitMs: timeoutMs,
+    pythonBin: String(process.env.JUWA_PYTHON_BIN || "python").trim() || "python",
+    pythonScript: String(
+      process.env.ORION_PYTHON_SCRIPT || path.join(__dirname, "juwa_python", "orion_login_add.py")
+    ).trim(),
+  };
+}
+
 function gamevaultConfig() {
   const timeoutMs = Number(process.env.GAMEVAULT_TIMEOUT_MS || 90000);
   return {
@@ -73,6 +91,7 @@ function gamevaultConfig() {
 function gameConfig(game) {
   if (game === "milkyway") return milkywayConfig();
   if (game === "gamevault") return gamevaultConfig();
+  if (game === "orion") return orionConfig();
   return juwaConfig();
 }
 
@@ -270,9 +289,40 @@ async function runAddFunds(job) {
     const targetUser = String(job.username || "").trim();
     const amount = Number(job.amount);
     if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
-      return { ok: false, status: "invalid", "error": "Valid GameVault username and amount are required." };
+      return { ok: false, status: "invalid", error: "Valid GameVault username and amount are required." };
     }
     log("Using Python GameVault bridge (search → editor → Recharge)");
+    return runPythonBridge(job, cfg, log);
+  }
+  if (game === "orion") {
+    const cfg = orionConfig();
+    const log = (s) => {
+      try {
+        job.onStatus?.(s);
+      } catch {
+        /* ignore */
+      }
+    };
+    if (!cfg.enabled) {
+      return {
+        ok: false,
+        status: "disabled",
+        error: "Orion automation is disabled. Set ORION_AUTOMATION_ENABLED=1 or JUWA_AUTOMATION_ENABLED=1.",
+      };
+    }
+    if (!cfg.username || !cfg.password) {
+      return {
+        ok: false,
+        status: "misconfigured",
+        error: "Orion agent credentials missing. Set ORION_AGENT_USERNAME and ORION_AGENT_PASSWORD.",
+      };
+    }
+    const targetUser = String(job.username || "").trim();
+    const amount = Number(job.amount);
+    if (!targetUser || !Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, status: "invalid", error: "Valid Orion username and amount are required." };
+    }
+    log("Using Python Orion bridge (search → Update → Recharge)");
     return runPythonBridge(job, cfg, log);
   }
   return runJuwaAddFunds(job);
@@ -599,6 +649,7 @@ module.exports = {
   juwaConfig,
   milkywayConfig,
   gamevaultConfig,
+  orionConfig,
   gameConfig,
   runJuwaAddFunds,
   runAddFunds,

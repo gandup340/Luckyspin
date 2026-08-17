@@ -1,6 +1,6 @@
 const { parseJuwaFundRequest, parseFollowUpUsername, parseFollowUpAmount, parseFollowUpGame } = require("./juwa-parser");
 const { createJuwaStore } = require("./juwa-store");
-const { runAddFunds, juwaConfig, milkywayConfig, gamevaultConfig } = require("./juwa-automation");
+const { runAddFunds, juwaConfig, milkywayConfig, gamevaultConfig, orionConfig } = require("./juwa-automation");
 const { gameLabel, askGameText, isSupportedGame, supportedGameIds } = require("./fund-games");
 
 const ASK_AMOUNT = "How much should we add? Reply with the amount (example: 20).";
@@ -17,6 +17,9 @@ function autoProcessEnabled(gameId) {
   const g = String(gameId || "").toLowerCase();
   if (g === "gamevault" && String(process.env.GAMEVAULT_AUTO_PROCESS || "").trim() !== "") {
     return envFlagOn("GAMEVAULT_AUTO_PROCESS");
+  }
+  if (g === "orion" && String(process.env.ORION_AUTO_PROCESS || "").trim() !== "") {
+    return envFlagOn("ORION_AUTO_PROCESS");
   }
   if (g === "milkyway" && String(process.env.MILKYWAY_AUTO_PROCESS || "").trim() !== "") {
     return envFlagOn("MILKYWAY_AUTO_PROCESS");
@@ -260,6 +263,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       const cfg = milkywayConfig();
       return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "MilkyWay" };
     }
+    if (gameId === "orion") {
+      const cfg = orionConfig();
+      return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "Orion" };
+    }
     if (gameId === "gamevault") {
       const cfg = gamevaultConfig();
       return { enabled: cfg.enabled, username: cfg.username, password: cfg.password, name: "GameVault" };
@@ -433,6 +440,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     const cfg = juwaConfig();
     const mw = milkywayConfig();
     const gv = gamevaultConfig();
+    const orion = orionConfig();
     res.json({
       automationEnabled: cfg.enabled,
       autoProcess: autoProcessEnabled(),
@@ -454,6 +462,13 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
         credentialsConfigured: Boolean(gv.username && gv.password),
         loginUrl: gv.loginUrl,
         userMgmtUrl: gv.userMgmtUrl,
+      },
+      orion: {
+        automationEnabled: orion.enabled,
+        autoProcess: autoProcessEnabled("orion"),
+        credentialsConfigured: Boolean(orion.username && orion.password),
+        loginUrl: orion.loginUrl,
+        storeUrl: orion.storeUrl,
       },
     });
   });

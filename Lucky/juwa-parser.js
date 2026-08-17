@@ -30,6 +30,11 @@ const STOP_WORDS = new Set(
     "gamevault",
     "gvault",
     "gv",
+    "orion",
+    "orionstar",
+    "orionstars",
+    "stars",
+    "star",
     "vault",
     "way",
     "for",
@@ -109,7 +114,7 @@ function extractUsernames(text) {
   // "add to juwa USER" / "juwa USER ..." / "milkyway USER"
   const gameNear =
     t.matchAll(
-      /\b(?:juwa|milky\s*way|milkyway|milky|game\s*vault|gamevault|gvault|gv)\b[^a-zA-Z0-9_]{0,16}([a-zA-Z][a-zA-Z0-9_]{2,31})\b/gi
+      /\b(?:juwa|milky\s*way|milkyway|milky|game\s*vault|gamevault|gvault|gv|orion(?:\s*stars?)?)\b[^a-zA-Z0-9_]{0,16}([a-zA-Z][a-zA-Z0-9_]{2,31})\b/gi
     ) || [];
   for (const m of gameNear) {
     if (m[1] && isPlausibleUsername(m[1])) found.add(m[1]);
@@ -149,8 +154,8 @@ function extractAmounts(text) {
     /(?:\$)\s*(\d+(?:\.\d{1,2})?)/g,
     /\b(\d+(?:\.\d{1,2})?)\s*(?:\$|usd|dollars?|bucks)\b/gi,
     /\bamount\s*[:=]?\s*(\d+(?:\.\d{1,2})?)/gi,
-    /\b(?:juwa|milkyway|milky|gamevault|gvault|gv)\b(?:\s+\S+){0,4}\s+(\d+(?:\.\d{1,2})?)\b/gi,
-    /\b(?:add|juwa|milkyway|gamevault|deposit|fund|recharge).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
+    /\b(?:juwa|milkyway|milky|gamevault|gvault|gv|orion)\b(?:\s+\S+){0,4}\s+(\d+(?:\.\d{1,2})?)\b/gi,
+    /\b(?:add|juwa|milkyway|gamevault|orion|deposit|fund|recharge).{0,40}?\s(\d+(?:\.\d{1,2})?)\s*$/gi,
   ];
   for (const re of patterns) {
     for (const m of t.matchAll(re)) {
@@ -159,7 +164,7 @@ function extractAmounts(text) {
     }
   }
   // Last-token bare number if message mentions juwa/add and a username-like token
-  if (/\bjuwa\b/i.test(t) || /\bmilkyway\b/i.test(t) || /\bgamevault\b/i.test(t) || /\b(add|deposit|fund|recharge)\b/i.test(t)) {
+  if (/\bjuwa\b/i.test(t) || /\bmilkyway\b/i.test(t) || /\bgamevault\b/i.test(t) || /\borion\b/i.test(t) || /\b(add|deposit|fund|recharge)\b/i.test(t)) {
     const last = t.match(/(?:^|\s)(\d+(?:\.\d{1,2})?)(?:\s*[!.]*)?$/);
     if (last) {
       const a = parseAmount(last[1]);
@@ -179,6 +184,7 @@ function looksLikeJuwaFundRequest(text) {
   if (/\bjuwa\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
   if (/\b(?:milkyway|milky(?:[\s-]?way)?)\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
   if (/\b(?:game\s*vault|gamevault|gvault|gv)\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
+  if (/\b(?:orion(?:\s*stars?)?)\b/.test(t) && (hasVerb || amounts.length || users.length)) return true;
   if (hasVerb && amounts.length) return true;
   if (hasVerb && users.length) return true;
   if (users.length && amounts.length) return true;

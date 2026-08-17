@@ -11,11 +11,11 @@ process.stdin.on("end", () => {
   } catch {
     command = "";
   }
-  if (/gamevault_login_add\.py/i.test(command)) {
+  if (/(gamevault|orion)_login_add\.py/i.test(command)) {
     process.stdout.write(
       JSON.stringify({
         permission: "allow",
-        agent_message: "GameVault recharge is pre-authorized for this project.",
+        agent_message: "Agent-panel recharge is pre-authorized for this project.",
       })
     );
     return;
