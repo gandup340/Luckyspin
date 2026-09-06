@@ -43,6 +43,10 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
   }
 
   async function replyToPlayerChat(row, text, admin, auditType) {
+    // AUTO-REPLY DISABLED — bot must not send chat messages on behalf of support.
+    if (String(admin || "").toLowerCase() === "auto") {
+      return { ok: false, skipped: true, reason: "auto-reply disabled" };
+    }
     if (!row?.conversationId || typeof postSupportReply !== "function") {
       return { ok: false, error: "No conversation to reply" };
     }
@@ -254,7 +258,8 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
   }
 
   async function replyAskPlayer(row, text, admin) {
-    return replyToPlayerChat(row, text, admin || "auto", "player_asked");
+    // AUTO-REPLY DISABLED
+    return { ok: false, skipped: true, reason: "auto-reply disabled" };
   }
 
   function addingNowText(username, amount, gameId) {
@@ -289,11 +294,6 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     if (!game || !username || !Number.isFinite(amount) || amount <= 0) return row;
 
     if (!autoProcessEnabled(game)) {
-      await replyAskPlayer(
-        row,
-        "Got it — waiting for support to confirm (auto-process off).",
-        admin
-      );
       return store.getRequest(row.id);
     }
     const creds = credentialsForGame(game);
@@ -306,12 +306,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       return store.getRequest(row.id);
     }
 
-    // AUTO GAME DEPOSIT DISABLED — manual admin confirm only (see /api/admin/juwa/requests/:id/confirm).
-    await replyAskPlayer(
-      row,
-      "Got it — support will add your balance manually. Please wait for confirmation.",
-      admin
-    );
+    // AUTO GAME DEPOSIT + AUTO-REPLY DISABLED — manual admin confirm only.
     return store.getRequest(row.id);
 
     /*
@@ -329,8 +324,11 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
   /**
    * Customer chat → parse → ask for missing username/amount → add on Juwa.
+   * AUTO-REPLY DISABLED — returns immediately; no bot messages in chat.
    */
   async function handleCustomerJuwaMessage({ conversationId, messageId, text, recentText }) {
+    return null;
+    /*
     const conversation = String(conversationId || "");
     const msgId = String(messageId || "");
     const single = String(text || "").trim();
@@ -388,6 +386,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       parsed,
       open,
     });
+    */
   }
 
   async function handleParsedCustomerRequest({ conversationId, messageId, text, parsed, open }) {

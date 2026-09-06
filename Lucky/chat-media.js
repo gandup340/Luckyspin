@@ -39,38 +39,61 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       const ctx = new Ctx();
-      ringtoneState = { ctx, timer: null, nodes: [] };
+      ringtoneState = { ctx, timer: null, vibrateTimer: null, running: true };
 
-      const playBurst = () => {
-        if (!ringtoneState?.ctx) return;
+      // Loud classic phone RING-RING … pause — built to cut through sleep / background noise.
+      const playRingCycle = () => {
+        if (!ringtoneState?.running || !ringtoneState?.ctx) return;
         const c = ringtoneState.ctx;
         if (c.state === "suspended") c.resume().catch(() => {});
-        const now = c.currentTime;
-        [440, 480].forEach((freq, i) => {
-          const osc = c.createOscillator();
-          const gain = c.createGain();
-          osc.type = "sine";
-          osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.exponentialRampToValueAtTime(0.22, now + 0.04 + i * 0.05);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55 + i * 0.05);
-          osc.connect(gain);
-          gain.connect(c.destination);
-          osc.start(now + i * 0.18);
-          osc.stop(now + 0.7 + i * 0.18);
-          ringtoneState.nodes.push(osc, gain);
-        });
+        const t0 = c.currentTime;
+
+        const ringBurst = (start, durationSec, freqA, freqB) => {
+          [freqA, freqB].forEach((freq, i) => {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = "square";
+            osc.frequency.value = freq;
+            const startAt = start + i * 0.015;
+            const endAt = startAt + durationSec;
+            gain.gain.setValueAtTime(0.0001, startAt);
+            gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.025);
+            gain.gain.setValueAtTime(0.5, endAt - 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.0001, endAt);
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(startAt);
+            osc.stop(endAt + 0.02);
+          });
+        };
+
+        ringBurst(t0, 0.48, 880, 988);
+        ringBurst(t0 + 0.62, 0.48, 880, 988);
       };
 
-      playBurst();
-      ringtoneState.timer = setInterval(playBurst, 2200);
+      const vibratePattern = [500, 150, 500, 150, 500, 1800];
+
+      playRingCycle();
+      ringtoneState.timer = setInterval(playRingCycle, 3200);
+
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(vibratePattern);
+        ringtoneState.vibrateTimer = setInterval(() => {
+          if (ringtoneState?.running) navigator.vibrate(vibratePattern);
+        }, 3200);
+      }
     } catch {
       /* ignore */
     }
   }
 
   function stopRingtone() {
+    if (ringtoneState) ringtoneState.running = false;
     if (ringtoneState?.timer) clearInterval(ringtoneState.timer);
+    if (ringtoneState?.vibrateTimer) clearInterval(ringtoneState.vibrateTimer);
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(0);
+    }
     if (ringtoneState?.ctx) {
       try {
         ringtoneState.ctx.close();
