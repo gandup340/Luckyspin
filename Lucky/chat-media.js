@@ -6,6 +6,7 @@
   ];
   let cachedIce = null;
   let iceFetchPromise = null;
+  let ringtoneState = null;
 
   function playAlertSound() {
     try {
@@ -30,6 +31,259 @@
     } catch {
       /* ignore */
     }
+  }
+
+  function startRingtone() {
+    stopRingtone();
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      ringtoneState = { ctx, timer: null, nodes: [] };
+
+      const playBurst = () => {
+        if (!ringtoneState?.ctx) return;
+        const c = ringtoneState.ctx;
+        if (c.state === "suspended") c.resume().catch(() => {});
+        const now = c.currentTime;
+        [440, 480].forEach((freq, i) => {
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.22, now + 0.04 + i * 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55 + i * 0.05);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start(now + i * 0.18);
+          osc.stop(now + 0.7 + i * 0.18);
+          ringtoneState.nodes.push(osc, gain);
+        });
+      };
+
+      playBurst();
+      ringtoneState.timer = setInterval(playBurst, 2200);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function stopRingtone() {
+    if (ringtoneState?.timer) clearInterval(ringtoneState.timer);
+    if (ringtoneState?.ctx) {
+      try {
+        ringtoneState.ctx.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    ringtoneState = null;
+  }
+
+  function injectCallOverlayStyles() {
+    if (document.getElementById("lucky-call-overlay-styles")) return;
+    const style = document.createElement("style");
+    style.id = "lucky-call-overlay-styles";
+    style.textContent = `
+      .lucky-call-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: grid;
+        place-items: center;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+          max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        background: rgba(8, 10, 12, 0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .lucky-call-overlay[hidden] { display: none !important; }
+      .lucky-call-card {
+        width: min(100%, 22rem);
+        padding: 1.75rem 1.5rem 1.5rem;
+        border-radius: 18px;
+        border: 1px solid rgba(238, 241, 244, 0.12);
+        background: linear-gradient(165deg, #22262b 0%, #1b1e22 100%);
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+        text-align: center;
+        color: #eef1f4;
+        font-family: "Outfit", "Segoe UI", sans-serif;
+      }
+      .lucky-call-avatar {
+        width: 4.5rem;
+        height: 4.5rem;
+        margin: 0 auto 1rem;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 1.85rem;
+        background: rgba(43, 184, 174, 0.14);
+        border: 1px solid rgba(61, 205, 194, 0.35);
+      }
+      .lucky-call-avatar.is-ringing { animation: lucky-call-pulse 1.2s ease-in-out infinite; }
+      .lucky-call-avatar.is-outgoing { animation: lucky-call-pulse 1.6s ease-in-out infinite; }
+      @keyframes lucky-call-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(61, 205, 194, 0.35); }
+        50% { transform: scale(1.06); box-shadow: 0 0 0 14px rgba(61, 205, 194, 0); }
+      }
+      .lucky-call-title {
+        margin: 0 0 0.35rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #3dcdc2;
+        font-weight: 700;
+      }
+      .lucky-call-name {
+        margin: 0 0 0.35rem;
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .lucky-call-status {
+        margin: 0 0 1.25rem;
+        font-size: 0.92rem;
+        color: #8b949e;
+        min-height: 1.25rem;
+      }
+      .lucky-call-actions {
+        display: flex;
+        gap: 0.65rem;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .lucky-call-actions[hidden] { display: none !important; }
+      .lucky-call-btn {
+        min-width: 7rem;
+        padding: 0.72rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(238, 241, 244, 0.14);
+        background: #2a2f36;
+        color: #eef1f4;
+        font: inherit;
+        font-size: 0.92rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .lucky-call-btn:active { transform: scale(0.97); }
+      .lucky-call-btn.is-accept {
+        background: linear-gradient(135deg, #2bb8ae, #3dcdc2);
+        border-color: transparent;
+        color: #0a0c0e;
+      }
+      .lucky-call-btn.is-decline,
+      .lucky-call-btn.is-end {
+        background: rgba(240, 113, 103, 0.12);
+        border-color: rgba(240, 113, 103, 0.45);
+        color: #f07167;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function createCallOverlay() {
+    injectCallOverlayStyles();
+    let root = document.getElementById("lucky-call-overlay");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "lucky-call-overlay";
+      root.className = "lucky-call-overlay";
+      root.hidden = true;
+      root.innerHTML = `
+        <div class="lucky-call-card" role="dialog" aria-modal="true" aria-labelledby="lucky-call-title">
+          <div class="lucky-call-avatar" id="lucky-call-avatar" aria-hidden="true">📞</div>
+          <p class="lucky-call-title" id="lucky-call-title">Voice call</p>
+          <p class="lucky-call-name" id="lucky-call-name"></p>
+          <p class="lucky-call-status" id="lucky-call-status"></p>
+          <div class="lucky-call-actions" id="lucky-call-incoming-actions">
+            <button type="button" class="lucky-call-btn is-decline" id="lucky-call-decline">Decline</button>
+            <button type="button" class="lucky-call-btn is-accept" id="lucky-call-accept">Accept</button>
+          </div>
+          <div class="lucky-call-actions" id="lucky-call-outgoing-actions" hidden>
+            <button type="button" class="lucky-call-btn is-end" id="lucky-call-cancel">Cancel call</button>
+          </div>
+          <div class="lucky-call-actions" id="lucky-call-active-actions" hidden>
+            <button type="button" class="lucky-call-btn is-end" id="lucky-call-end">End call</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(root);
+    }
+
+    const els = {
+      root,
+      avatar: root.querySelector("#lucky-call-avatar"),
+      title: root.querySelector("#lucky-call-title"),
+      name: root.querySelector("#lucky-call-name"),
+      status: root.querySelector("#lucky-call-status"),
+      incoming: root.querySelector("#lucky-call-incoming-actions"),
+      outgoing: root.querySelector("#lucky-call-outgoing-actions"),
+      active: root.querySelector("#lucky-call-active-actions"),
+      accept: root.querySelector("#lucky-call-accept"),
+      decline: root.querySelector("#lucky-call-decline"),
+      cancel: root.querySelector("#lucky-call-cancel"),
+      end: root.querySelector("#lucky-call-end"),
+    };
+
+    let handlers = { onAccept: null, onDecline: null, onCancel: null, onEnd: null };
+
+    function bind(btn, fn) {
+      btn.replaceWith(btn.cloneNode(true));
+      const fresh = root.querySelector(`#${btn.id}`);
+      fresh.addEventListener("click", () => fn?.());
+      return fresh;
+    }
+
+    els.accept = bind(els.accept, () => handlers.onAccept?.());
+    els.decline = bind(els.decline, () => handlers.onDecline?.());
+    els.cancel = bind(els.cancel, () => handlers.onCancel?.());
+    els.end = bind(els.end, () => handlers.onEnd?.());
+
+    function showMode(mode) {
+      els.incoming.hidden = mode !== "incoming";
+      els.outgoing.hidden = mode !== "outgoing";
+      els.active.hidden = mode !== "active";
+      els.avatar.classList.toggle("is-ringing", mode === "incoming");
+      els.avatar.classList.toggle("is-outgoing", mode === "outgoing");
+      root.hidden = false;
+    }
+
+    return {
+      showIncoming({ title, name, status, ring, onAccept, onDecline }) {
+        handlers = { onAccept, onDecline, onCancel: onDecline, onEnd: null };
+        els.title.textContent = title || "Incoming call";
+        els.name.textContent = name || "Caller";
+        els.status.textContent = status || "Ringing…";
+        if (ring) startRingtone();
+        else stopRingtone();
+        showMode("incoming");
+      },
+      showOutgoing({ title, name, status, onCancel }) {
+        stopRingtone();
+        handlers = { onAccept: null, onDecline: null, onCancel, onEnd: onCancel };
+        els.title.textContent = title || "Calling…";
+        els.name.textContent = name || "";
+        els.status.textContent = status || "Waiting for answer…";
+        showMode("outgoing");
+      },
+      showActive({ title, name, status, onEnd }) {
+        stopRingtone();
+        handlers = { onAccept: null, onDecline: null, onCancel: onEnd, onEnd };
+        els.title.textContent = title || "On call";
+        els.name.textContent = name || "";
+        els.status.textContent = status || "Connected";
+        showMode("active");
+      },
+      updateStatus(text) {
+        if (text) els.status.textContent = text;
+      },
+      hide() {
+        stopRingtone();
+        root.hidden = true;
+        handlers = { onAccept: null, onDecline: null, onCancel: null, onEnd: null };
+      },
+    };
   }
 
   function renderMediaAttachment(attachment, esc) {
@@ -145,6 +399,7 @@
     setStatus,
     onIncoming,
     callerName,
+    useOverlay = true,
   }) {
     let pc = null;
     let localStream = null;
@@ -153,6 +408,11 @@
     let pendingIce = [];
     let makingOffer = false;
     let callConversationId = null;
+    const overlay = useOverlay ? createCallOverlay() : null;
+
+    function peerLabel() {
+      return role === "admin" ? "Player" : "Support";
+    }
 
     function signalingConversationId() {
       return callConversationId || getConversationId();
@@ -165,6 +425,30 @@
       if (String(getConversationId() || "") === msgId) return true;
       if (pendingOffer && String(pendingOffer.conversationId) === msgId) return true;
       return false;
+    }
+
+    function showOutgoingUi(name) {
+      overlay?.showOutgoing({
+        title: role === "admin" ? "Calling player" : "Calling support",
+        name: name || peerLabel(),
+        status: "Waiting for answer…",
+        onCancel: () => {
+          endCall(true);
+          setStatus?.("Call cancelled.");
+        },
+      });
+    }
+
+    function showActiveUi(name, status) {
+      overlay?.showActive({
+        title: "On call",
+        name: name || peerLabel(),
+        status: status || "Connected",
+        onEnd: () => {
+          endCall(true);
+          setStatus?.("Call ended.");
+        },
+      });
     }
 
     async function flushIce(peer) {
@@ -195,11 +479,18 @@
       };
       pc.onconnectionstatechange = () => {
         const state = pc?.connectionState;
-        if (state === "connected") setStatus?.("Call connected.");
+        if (state === "connected") {
+          setStatus?.("Call connected.");
+          overlay?.updateStatus("Connected");
+        }
         if (state === "failed") {
           setStatus?.("Call failed — check microphone permission and try again.");
+          overlay?.updateStatus("Connection failed");
         }
-        if (state === "disconnected") setStatus?.("Call reconnecting…");
+        if (state === "disconnected") {
+          setStatus?.("Call reconnecting…");
+          overlay?.updateStatus("Reconnecting…");
+        }
       };
       pc.ontrack = (ev) => {
         if (remoteAudioEl) {
@@ -271,10 +562,11 @@
       if (inCall || makingOffer) return;
       makingOffer = true;
       callConversationId = conversationId;
+      const name =
+        typeof callerName === "function" ? callerName() : callerName || (role === "admin" ? "Support" : "Player");
       try {
+        showOutgoingUi(role === "admin" ? name : peerLabel());
         await startLocalAudio();
-        const name =
-          typeof callerName === "function" ? callerName() : callerName || (role === "admin" ? "Support" : "Player");
         sendJson({ type: "call_invite", conversationId, name });
         const peer = await ensurePc();
         const offer = await peer.createOffer({ offerToReceiveAudio: true });
@@ -289,6 +581,7 @@
       } catch (err) {
         console.warn("startCall:", err?.message || err);
         setStatus?.(err?.message || "Microphone permission is required for calls.");
+        overlay?.hide();
         endCall(false);
       } finally {
         makingOffer = false;
@@ -297,10 +590,15 @@
 
     async function acceptCall(conversationId) {
       callConversationId = conversationId;
+      overlay?.hide();
       try {
         await startLocalAudio();
         sendJson({ type: "call_accept", conversationId });
         setCallUi(true);
+        showActiveUi(
+          role === "admin" ? pendingOffer?.name || "Player" : peerLabel(),
+          "Connecting…"
+        );
         setStatus?.("Connecting call…");
         if (pendingOffer && String(pendingOffer.conversationId) === String(conversationId)) {
           const offer = pendingOffer;
@@ -311,6 +609,7 @@
         console.warn("acceptCall:", err?.message || err);
         setStatus?.(err?.message || "Could not access microphone.");
         sendJson({ type: "call_reject", conversationId });
+        overlay?.hide();
         endCall(false);
       }
     }
@@ -319,6 +618,7 @@
       sendJson({ type: "call_reject", conversationId });
       pendingOffer = null;
       pendingIce = [];
+      overlay?.hide();
       endCall(false);
       setStatus?.("Call declined.");
     }
@@ -326,6 +626,7 @@
     function endCall(notify = true) {
       const conversationId = signalingConversationId();
       if (notify && conversationId) sendJson({ type: "call_end", conversationId });
+      overlay?.hide();
       try {
         pc?.getSenders()?.forEach((s) => {
           try {
@@ -373,6 +674,7 @@
           if (peer.signalingState === "have-local-offer" || peer.signalingState === "have-local-pranswer") {
             await peer.setRemoteDescription(desc);
             await flushIce(peer);
+            showActiveUi(role === "admin" ? "Player" : peerLabel(), "Connected");
           }
         } else if (signal.type === "ice" && signal.candidate) {
           if (!peer.remoteDescription) pendingIce.push(signal.candidate);
@@ -383,35 +685,53 @@
       }
     }
 
+    function showIncomingUi(msg, actions) {
+      const caller = msg.name || (msg.from === "admin" ? "Support" : "Player");
+      if (overlay) {
+        overlay.showIncoming({
+          title: "Incoming call",
+          name: caller,
+          status: "Ringing…",
+          ring: role === "admin",
+          onAccept: () => actions.accept(),
+          onDecline: () => actions.reject(),
+        });
+        return;
+      }
+      playAlertSound();
+      const ok = window.confirm(`${caller} is calling. Accept?`);
+      if (ok) actions.accept();
+      else actions.reject();
+    }
+
     function handleServerEvent(msg) {
       if (msg.type === "call_invite") {
         if (inCall && makingOffer) return;
         callConversationId = msg.conversationId || callConversationId;
-        playAlertSound();
-        if (typeof onIncoming === "function") {
-          onIncoming(msg, {
-            accept: () => acceptCall(msg.conversationId),
-            reject: () => rejectCall(msg.conversationId),
-          });
-        } else {
-          const ok = window.confirm(`${msg.name || "Caller"} is calling. Accept?`);
-          if (ok) acceptCall(msg.conversationId);
-          else rejectCall(msg.conversationId);
-        }
+        const actions = {
+          accept: () => acceptCall(msg.conversationId),
+          reject: () => rejectCall(msg.conversationId),
+        };
+        if (typeof onIncoming === "function") onIncoming(msg, actions);
+        showIncomingUi(msg, actions);
         return;
       }
       if (msg.type === "call_accept") {
         callConversationId = msg.conversationId || callConversationId;
+        overlay?.hide();
+        showActiveUi(role === "admin" ? "Player" : peerLabel(), "Connecting…");
         setStatus?.("Call accepted — connecting…");
         setCallUi(true);
         return;
       }
       if (msg.type === "call_reject") {
+        overlay?.hide();
         setStatus?.("Call declined.");
         endCall(false);
         return;
       }
       if (msg.type === "call_end") {
+        overlay?.hide();
         setStatus?.("Call ended.");
         endCall(false);
         return;
@@ -440,6 +760,8 @@
 
   window.LuckyChatMedia = {
     playAlertSound,
+    startRingtone,
+    stopRingtone,
     renderMediaAttachment,
     voiceBlobToFile,
     createVoiceController,

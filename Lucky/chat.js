@@ -381,11 +381,6 @@
     hangBtn,
     setStatus,
     callerName: () => profile?.name || player?.name || "Player",
-    onIncoming: (msg, actions) => {
-      const ok = window.confirm(`${msg.name || "Support"} is calling. Accept?`);
-      if (ok) actions.accept();
-      else actions.reject();
-    },
   });
 
   window.LuckyChatMedia?.createVoiceController?.({

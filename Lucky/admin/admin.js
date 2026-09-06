@@ -1215,11 +1215,11 @@
       if (msg.conversationId && msg.conversationId !== activeId) {
         openConvo(msg.conversationId).catch(() => {});
       }
-      const ok = window.confirm(`${msg.name || "Player"} is calling. Accept?`);
-      if (ok) {
+      const accept = actions.accept;
+      actions.accept = () => {
         if (msg.conversationId) activeId = msg.conversationId;
-        actions.accept();
-      } else actions.reject();
+        accept();
+      };
     },
   });
 
