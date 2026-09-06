@@ -34,6 +34,86 @@ const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+function normalizeUploadMime(mime) {
+  const base = String(mime || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (base === "audio/x-m4a") return "audio/mp4";
+  if (base === "audio/aac") return "audio/mp4";
+  return base;
+}
+
+function buildIceServersSync() {
+  const servers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun.relay.metered.ca:80" },
+  ];
+  const turnUrls = String(process.env.TURN_URLS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const turnUser = String(process.env.TURN_USERNAME || "").trim();
+  const turnPass = String(process.env.TURN_CREDENTIAL || "").trim();
+  if (turnUrls.length && turnUser && turnPass) {
+    servers.push({ urls: turnUrls, username: turnUser, credential: turnPass });
+  }
+  return servers;
+}
+
+let meteredIceCache = { servers: null, expiresAt: 0 };
+
+async function fetchMeteredIceServers() {
+  const apiKey = String(process.env.METERED_TURN_API_KEY || "").trim();
+  const domain = String(process.env.METERED_TURN_DOMAIN || "luckyspinns.metered.live").trim();
+  if (!apiKey) return null;
+  if (meteredIceCache.servers && Date.now() < meteredIceCache.expiresAt) {
+    return meteredIceCache.servers;
+  }
+  const url = `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Metered TURN credentials request failed (${res.status})`);
+  }
+  const iceServers = await res.json();
+  if (!Array.isArray(iceServers) || !iceServers.length) {
+    throw new Error("Metered TURN credentials response was empty");
+  }
+  meteredIceCache = { servers: iceServers, expiresAt: Date.now() + 55 * 60 * 1000 };
+  return iceServers;
+}
+
+async function buildIceServers() {
+  try {
+    const metered = await fetchMeteredIceServers();
+    if (metered) return metered;
+  } catch (err) {
+    console.warn("[webrtc] Metered TURN fetch failed:", err?.message || err);
+  }
+  return buildIceServersSync();
+}
+
+function isWsOriginAllowed(req) {
+  if (!ALLOWED_ORIGINS.length) return true;
+  const origin = String(req.headers.origin || "").trim();
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // Allow the live site host even if ALLOWED_ORIGINS still lists an old deploy URL.
+  try {
+    const host = String(req.headers.host || "").trim();
+    if (!host) return false;
+    const secure =
+      req.socket?.encrypted ||
+      String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
+    const derived = `${secure ? "https" : "http"}://${host}`;
+    return origin === derived;
+  } catch {
+    return false;
+  }
+}
 const FACEBOOK_PAGE_ACCESS_TOKEN = String(process.env.FACEBOOK_PAGE_ACCESS_TOKEN || "").trim();
 // Default allows Meta "Verify and save" even if Render env is missing this key.
 const FACEBOOK_VERIFY_TOKEN = String(
@@ -74,6 +154,8 @@ const CHAT_UPLOAD_TYPES = {
   "audio/ogg": { ext: ".ogg", kind: "audio" },
   "audio/mpeg": { ext: ".mp3", kind: "audio" },
   "audio/mp4": { ext: ".m4a", kind: "audio" },
+  "audio/aac": { ext: ".m4a", kind: "audio" },
+  "audio/x-m4a": { ext: ".m4a", kind: "audio" },
   "audio/wav": { ext: ".wav", kind: "audio" },
   "audio/x-wav": { ext: ".wav", kind: "audio" },
   "application/pdf": { ext: ".pdf", kind: "file" },
@@ -103,8 +185,13 @@ const chatUpload = multer({
   }),
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (CHAT_UPLOAD_TYPES[file.mimetype]) cb(null, true);
-    else cb(new Error("File type not allowed. Use photo, video, audio, PDF, Word, Excel, or text."));
+    const mime = normalizeUploadMime(file.mimetype);
+    if (CHAT_UPLOAD_TYPES[mime]) {
+      file.mimetype = mime;
+      cb(null, true);
+    } else {
+      cb(new Error("File type not allowed. Use photo, video, audio, PDF, Word, Excel, or text."));
+    }
   },
 });
 
@@ -1237,6 +1324,15 @@ app.delete("/api/push/subscribe", (req, res) => {
 
 app.use("/api/", apiLimiter);
 
+app.get("/api/webrtc/ice", async (_req, res) => {
+  try {
+    res.json({ iceServers: await buildIceServers() });
+  } catch (err) {
+    console.warn("[webrtc] ice endpoint:", err?.message || err);
+    res.json({ iceServers: buildIceServersSync() });
+  }
+});
+
 app.get("/api/config", (_req, res) => {
   const cfg = getConfig();
   if (!cfg) return res.status(500).json({ error: "Config missing. Run npm run seed." });
@@ -1817,7 +1913,7 @@ app.post("/api/chat/upload", uploadLimiter, (req, res) => {
       }
     }
 
-    const meta = CHAT_UPLOAD_TYPES[req.file.mimetype];
+    const meta = CHAT_UPLOAD_TYPES[normalizeUploadMime(req.file.mimetype)];
     if (!meta) {
       cleanup();
       return res.status(400).json({ error: "File type not allowed" });
@@ -1979,12 +2075,9 @@ function ensureConversation(id, profile = {}) {
 }
 
 wss.on("connection", (ws, req) => {
-  if (ALLOWED_ORIGINS.length) {
-    const origin = String(req.headers.origin || "");
-    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-      ws.close(1008, "Origin not allowed");
-      return;
-    }
+  if (!isWsOriginAllowed(req)) {
+    ws.close(1008, "Origin not allowed");
+    return;
   }
 
   sockets.add(ws);

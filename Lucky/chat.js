@@ -356,6 +356,7 @@
     if (conversationId) body.append("conversationId", conversationId);
     const res = await fetch("/api/chat/upload", {
       method: "POST",
+      credentials: "include",
       headers: conversationId ? { "X-Conversation-Id": conversationId } : {},
       body,
     });
@@ -402,7 +403,7 @@
       }
       try {
         setStatus("Sending voice…");
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+        const file = window.LuckyChatMedia.voiceBlobToFile(blob);
         const attachment = await uploadFile(file);
         sendJson({ type: "message", text: "Voice message", attachment });
         setStatus("Voice sent");

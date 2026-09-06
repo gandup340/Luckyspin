@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Auto-commit and push accepted agent edits:
+ * Auto-commit accepted agent edits:
  * - afterFileEdit: stage the edited file
- * - stop / sessionEnd: commit staged changes, then push to origin
+ * - stop / sessionEnd: commit staged changes when the session completes
  */
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -70,29 +70,10 @@ function stageFile(filePath) {
   }
 }
 
-function pushRemote(gitRoot) {
-  try {
-    const branch = git(["rev-parse", "--abbrev-ref", "HEAD"], gitRoot);
-    try {
-      git(["push"], gitRoot);
-    } catch (err) {
-      const msg = String(err.stderr || err.message || err);
-      if (/no upstream|set-upstream|has no upstream/i.test(msg)) {
-        git(["push", "-u", "origin", branch], gitRoot);
-      } else {
-        throw err;
-      }
-    }
-    console.error(`[auto-commit] pushed ${branch} to origin`);
-  } catch (err) {
-    console.error(`[auto-commit] push failed: ${err.stderr || err.message || err}`);
-  }
-}
-
 function commitStaged(gitRoot) {
   try {
     const staged = git(["diff", "--cached", "--name-only"], gitRoot);
-    if (!staged) return false;
+    if (!staged) return;
 
     const files = staged
       .split(/\r?\n/)
@@ -106,13 +87,10 @@ function commitStaged(gitRoot) {
 
     git(["commit", "-m", message], gitRoot);
     console.error(`[auto-commit] committed ${files.length} file(s)`);
-    pushRemote(gitRoot);
-    return true;
   } catch (err) {
     const msg = String(err.stderr || err.message || err);
-    if (/nothing to commit|no changes added/i.test(msg)) return false;
+    if (/nothing to commit|no changes added/i.test(msg)) return;
     console.error(`[auto-commit] commit failed: ${msg}`);
-    return false;
   }
 }
 

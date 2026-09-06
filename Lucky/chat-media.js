@@ -1,4 +1,12 @@
 (() => {
+  const DEFAULT_ICE = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+  ];
+  let cachedIce = null;
+  let iceFetchPromise = null;
+
   function playAlertSound() {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -40,6 +48,38 @@
     return `<a class="bubble-file" href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>`;
   }
 
+  function pickAudioMime() {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac", ""];
+    for (const mime of candidates) {
+      if (!mime || MediaRecorder.isTypeSupported(mime)) return mime;
+    }
+    return "";
+  }
+
+  function voiceBlobToFile(blob) {
+    const rawType = String(blob.type || "audio/webm");
+    const baseType = rawType.split(";")[0].trim() || "audio/webm";
+    const ext = /mp4|aac|m4a/i.test(baseType) ? "m4a" : "webm";
+    return new File([blob], `voice-${Date.now()}.${ext}`, { type: baseType });
+  }
+
+  async function loadIceServers() {
+    if (cachedIce) return cachedIce;
+    if (!iceFetchPromise) {
+      iceFetchPromise = fetch("/api/webrtc/ice")
+        .then((res) => (res.ok ? res.json() : { iceServers: DEFAULT_ICE }))
+        .then((data) => {
+          cachedIce = Array.isArray(data?.iceServers) && data.iceServers.length ? data.iceServers : DEFAULT_ICE;
+          return cachedIce;
+        })
+        .catch(() => {
+          cachedIce = DEFAULT_ICE;
+          return cachedIce;
+        });
+    }
+    return iceFetchPromise;
+  }
+
   function createVoiceController({ button, onRecorded, setStatus }) {
     let mediaRecorder = null;
     let chunks = [];
@@ -51,14 +91,14 @@
         mediaRecorder?.stop();
         return;
       }
+      if (!window.isSecureContext) {
+        setStatus?.("Voice notes require HTTPS.");
+        return;
+      }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         chunks = [];
-        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/webm")
-            ? "audio/webm"
-            : "";
+        const mime = pickAudioMime();
         mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
         mediaRecorder.addEventListener("dataavailable", (e) => {
           if (e.data?.size) chunks.push(e.data);
@@ -69,7 +109,7 @@
           if (button) button.textContent = "Voice";
           stream?.getTracks()?.forEach((t) => t.stop());
           stream = null;
-          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || mime || "audio/webm" });
           chunks = [];
           if (blob.size < 500) {
             setStatus?.("Voice note too short.");
@@ -112,13 +152,19 @@
     let pendingOffer = null;
     let pendingIce = [];
     let makingOffer = false;
+    let callConversationId = null;
 
-    function iceServers() {
-      return [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-      ];
+    function signalingConversationId() {
+      return callConversationId || getConversationId();
+    }
+
+    function matchesCallThread(msg) {
+      const msgId = String(msg.conversationId || "");
+      if (!msgId) return false;
+      if (String(callConversationId || "") === msgId) return true;
+      if (String(getConversationId() || "") === msgId) return true;
+      if (pendingOffer && String(pendingOffer.conversationId) === msgId) return true;
+      return false;
     }
 
     async function flushIce(peer) {
@@ -135,10 +181,11 @@
 
     async function ensurePc() {
       if (pc) return pc;
-      pc = new RTCPeerConnection({ iceServers: iceServers() });
+      const iceServers = await loadIceServers();
+      pc = new RTCPeerConnection({ iceServers });
       pc.onicecandidate = (ev) => {
         if (!ev.candidate) return;
-        const conversationId = getConversationId();
+        const conversationId = signalingConversationId();
         if (!conversationId) return;
         sendJson({
           type: "webrtc_signal",
@@ -149,7 +196,9 @@
       pc.onconnectionstatechange = () => {
         const state = pc?.connectionState;
         if (state === "connected") setStatus?.("Call connected.");
-        if (state === "failed") setStatus?.("Call connection failed. Try again.");
+        if (state === "failed") {
+          setStatus?.("Call failed — check microphone permission and try again.");
+        }
         if (state === "disconnected") setStatus?.("Call reconnecting…");
       };
       pc.ontrack = (ev) => {
@@ -163,6 +212,9 @@
 
     async function startLocalAudio() {
       if (localStream) return localStream;
+      if (!window.isSecureContext) {
+        throw new Error("Calls require HTTPS.");
+      }
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("This browser cannot access the microphone.");
       }
@@ -204,7 +256,7 @@
       await peer.setLocalDescription(answer);
       sendJson({
         type: "webrtc_signal",
-        conversationId: offerMsg.conversationId || getConversationId(),
+        conversationId: offerMsg.conversationId || signalingConversationId(),
         signal: { type: "answer", sdp: peer.localDescription },
       });
       setCallUi(true);
@@ -218,6 +270,7 @@
       }
       if (inCall || makingOffer) return;
       makingOffer = true;
+      callConversationId = conversationId;
       try {
         await startLocalAudio();
         const name =
@@ -243,6 +296,7 @@
     }
 
     async function acceptCall(conversationId) {
+      callConversationId = conversationId;
       try {
         await startLocalAudio();
         sendJson({ type: "call_accept", conversationId });
@@ -270,7 +324,7 @@
     }
 
     function endCall(notify = true) {
-      const conversationId = getConversationId();
+      const conversationId = signalingConversationId();
       if (notify && conversationId) sendJson({ type: "call_end", conversationId });
       try {
         pc?.getSenders()?.forEach((s) => {
@@ -290,24 +344,21 @@
       pendingOffer = null;
       pendingIce = [];
       makingOffer = false;
+      callConversationId = null;
       if (localAudioEl) localAudioEl.srcObject = null;
       if (remoteAudioEl) remoteAudioEl.srcObject = null;
       setCallUi(false);
     }
 
     async function handleSignal(msg) {
-      const conversationId = getConversationId();
-      if (role !== "admin" && String(msg.conversationId) !== String(conversationId)) return;
-      if (role === "admin" && conversationId && String(msg.conversationId) !== String(conversationId)) {
-        // Ignore signals for other open threads unless we have no active id yet.
-        return;
-      }
+      if (!matchesCallThread(msg)) return;
 
       const signal = msg.signal;
       if (!signal) return;
 
       try {
         if (signal.type === "offer") {
+          callConversationId = msg.conversationId || callConversationId;
           if (!inCall) {
             pendingOffer = msg;
             return;
@@ -334,8 +385,8 @@
 
     function handleServerEvent(msg) {
       if (msg.type === "call_invite") {
-        // Ignore our own outbound call echoes (shouldn't happen, but safe).
         if (inCall && makingOffer) return;
+        callConversationId = msg.conversationId || callConversationId;
         playAlertSound();
         if (typeof onIncoming === "function") {
           onIncoming(msg, {
@@ -350,6 +401,7 @@
         return;
       }
       if (msg.type === "call_accept") {
+        callConversationId = msg.conversationId || callConversationId;
         setStatus?.("Call accepted — connecting…");
         setCallUi(true);
         return;
@@ -389,6 +441,7 @@
   window.LuckyChatMedia = {
     playAlertSound,
     renderMediaAttachment,
+    voiceBlobToFile,
     createVoiceController,
     createCallController,
   };

@@ -1234,7 +1234,7 @@
         return;
       }
       try {
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+        const file = window.LuckyChatMedia.voiceBlobToFile(blob);
         const attachment = await uploadThreadFile(file);
         adminSendJson({
           type: "message",
