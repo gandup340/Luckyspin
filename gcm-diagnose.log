@@ -1,0 +1,215 @@
+﻿Diagnose log at 2026-09-06T16:08:22Z
+
+AppPath: C:\Program Files\Git\mingw64\bin\git-credential-manager.exe
+InstallDir: C:\Program Files\Git\mingw64\bin\
+Version: 2.7.3+5fa7116896c82164996a609accd1c5ad90fe730a
+
+------------
+Diagnostic: Environment
+Skipped: False
+Success: True
+Exception: None
+Log:
+OSType: Windows
+OSVersion: 10.0 (build 26200)
+Reading environment variables... OK
+ Variables:
+SESSIONNAME=Console
+ProgramFiles(x86)=C:\Program Files (x86)
+MSYSTEM=MINGW64
+ProgramW6432=C:\Program Files
+windir=C:\WINDOWS
+CURSOR_AGENT_STORE_FILES_DIR=C:\Users\nepsa\AppData\Local\Cursor\AgentStores\cursor_agent_stores\417bdbdf-3fa2-4d42-89d7-f20520c74cc0\files
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 154 Stepping 3, GenuineIntel
+TMP=C:\Users\nepsa\AppData\Local\Temp
+CURSOR_CONVERSATION_ID=417bdbdf-3fa2-4d42-89d7-f20520c74cc0
+DriverData=C:\Windows\System32\Drivers\DriverData
+Path=C:/Program Files/Git/mingw64/libexec/git-core;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\nepsa\bin;c:\Users\nepsa\AppData\Local\Programs\cursor\resources\app\node_modules\@vscode\ripgrep\bin;C:\app\nepsa\product\21c\dbhomeXE\bin;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files (x86)\Common Files\Oracle\Java\java8path;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\dotnet\;C:\Program Files\NVIDIA Corporation\NVIDIA app\NvDLISR;C:\Program Files\nodejs\;C:\Users\nepsa\AppData\Local\Programs\Python;C:\Program Files\cursor\resources\app\bin;C:\xampp\php;C:\ProgramData\ComposerSetup\bin;C:\Program Files\Git\cmd;C:\Program Files\Amazon\AWSCLIV2\;C:\Program Files\Cloudflare\Cloudflare WARP\;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\app\nepsa\product\21c\dbhomeXE\bin;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files (x86)\Common Files\Oracle\Java\java8path;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\dotnet\;C:\Program Files\NVIDIA Corporation\NVIDIA app\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\nodejs\;C:\Users\nepsa\AppData\Local\Programs\Python;C:\Program Files\cursor\resources\app\bin;C:\xampp\php;C:\ProgramData\ComposerSetup\bin;C:\Program Files\Git\cmd;C:\Program Files\Amazon\AWSCLIV2\;C:\Users\nepsa\AppData\Local\Programs\Python\Python313;C:\Users\nepsa\AppData\Local\Microsoft\WindowsApps;C:\Users\nepsa\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\nepsa\AppData\Roaming\npm;C:\Users\;C:\oracle\instantclient_21_15;C:\Users\nepsa\AppData\Local\Programs\cursor\resources\app\bin
+__CURSOR_SANDBOX_ENV_RESTORE=builtin unset CURSOR_CONVERSATION_ID CURSOR_REQUEST_ID CURSOR_AGENT_STORE_FILES_DIR CURSOR_AGENT_STORE_SHARED_PATHS 2>/dev/null || true; builtin export CURSOR_CONVERSATION_ID='417bdbdf-3fa2-4d42-89d7-f20520c74cc0'; builtin export CURSOR_REQUEST_ID='d9255158-27f9-452d-9558-7da12ad707cd'; builtin export CURSOR_AGENT_STORE_FILES_DIR='C:\Users\nepsa\AppData\Local\Cursor\AgentStores\cursor_agent_stores\417bdbdf-3fa2-4d42-89d7-f20520c74cc0\files'; builtin export CURSOR_AGENT_STORE_SHARED_PATHS='{"user":{"path":"C:\\Users\\nepsa\\AppData\\Local\\Cursor\\AgentStores\\cursor_agent_stores\\u217344692\\files","readOnly":false}}'
+VSCODE_ESM_ENTRYPOINT=vs/workbench/api/node/extensionHostProcess
+VSCODE_CWD=C:\Users\nepsa\AppData\Local\Programs\cursor
+EnableLog=INFO
+_ZO_DOCTOR=0
+LOCALAPPDATA=C:\Users\nepsa\AppData\Local
+PROCESSOR_REVISION=9a03
+CURSOR_AGENT_STORE_SHARED_PATHS={"user":{"path":"C:\\Users\\nepsa\\AppData\\Local\\Cursor\\AgentStores\\cursor_agent_stores\\u217344692\\files","readOnly":false}}
+TEMP=C:\Users\nepsa\AppData\Local\Temp
+USERPROFILE=C:\Users\nepsa
+LOGONSERVER=\\OK
+TERM=dumb
+NO_COLOR=1
+SystemRoot=C:\WINDOWS
+CHROME_CRASHPAD_PIPE_NAME=\\.\pipe\crashpad_20220_RMUQUBJAUNZPLXCJ
+GIT_EXEC_PATH=C:/Program Files/Git/mingw64/libexec/git-core
+CURSOR_EXTENSION_HOST_ROLE=agent-exec
+PLINK_PROTOCOL=ssh
+VSCODE_PROCESS_TITLE=extension-host (agent-exec) Luckyspins [2-6]
+FORCE_COLOR=0
+OneDrive=C:\Users\nepsa\OneDrive
+CURSOR_LAYOUT=unifiedAgent
+CommonProgramFiles=C:\Program Files\Common Files
+CURSOR_AGENT=1
+PROCESSOR_LEVEL=6
+ProgramData=C:\ProgramData
+LC_CTYPE=C.UTF-8
+RlsSvcPort=22112
+HOMEPATH=\Users\nepsa
+PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL
+IGCCSVC_DB=AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAzeAhbJShk0CnrUACcHIRbwQAAAACAAAAAAAQZgAAAAEAACAAAACWNTH9tfoh99mN0RunjIoGeeyFMtxM8jmfNQYu0UdsaAAAAAAOgAAAAAIAACAAAAB6UjgM1jVfCylXm7ixrc0Zt5o5z2v7400JJSsYQXwkSmAAAAAeAslbbruH37SHMbU0QtLe/27spgIOxXN4CMm1xuvXDGUiZof9oa8fUFhnOzhNMBCfXD+X24i25pPMy5dWooZ7WBX1B/dhfXOmlzUf4mRU5hhF4Pv/uYaqkndlCr70vzBAAAAAWhJlLD+ftIj6+o0/K9dJh+9OdYAWd+KankqbI5wXQIsHHIgjqiricTR+otM8/BpbTpXF5PdkWiYyuCeoegTArQ==
+COMPUTERNAME=OK
+VSCODE_IPC_HOOK=\\.\pipe\c0611b93-3.19.13-main-sock
+VSCODE_HANDLES_UNCAUGHT_ERRORS=true
+ALLUSERSPROFILE=C:\ProgramData
+CommonProgramW6432=C:\Program Files\Common Files
+USERNAME=nepsa
+SOPC_KIT_NIOS2=C:\altera\13.1\nios2eds
+CURSOR_WORKSPACE_LABEL=Luckyspins
+ACSetupSvcPort=23210
+PROCESSOR_ARCHITECTURE=AMD64
+AGENT_TRANSCRIPTS=C:\Users\nepsa\.cursor\projects\c-Users-nepsa-Downloads-Luckyspins\agent-transcripts
+CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files
+HOMEDRIVE=C:
+VSCODE_PID=20220
+VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost
+GIT_TRACE2_PARENT_SID=b17004b1-14f1-4392-84aa-c59e3099038b
+SystemDrive=C:
+NUMBER_OF_PROCESSORS=16
+OS=Windows_NT
+ZES_ENABLE_SYSMAN=1
+ProgramFiles=C:\Program Files
+ComSpec=C:\WINDOWS\system32\cmd.exe
+OPENSSL_CONF=C:\Program Files\PostgreSQL\psqlODBC\etc\openssl.cnf
+HOME=C:\Users\nepsa
+QUARTUS_ROOTDIR=C:\altera\13.1\quartus
+PSModulePath=C:\Users\nepsa\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules
+TMPDIR=C:\Users\nepsa\AppData\Local\Temp
+APPDATA=C:\Users\nepsa\AppData\Roaming
+USERDOMAIN=OK
+ACSvcPort=17532
+EFC_13256_1592913036=1
+CURSOR_REQUEST_ID=d9255158-27f9-452d-9558-7da12ad707cd
+VSCODE_NLS_CONFIG={"userLocale":"en-us","osLocale":"en-us","resolvedLanguage":"en","defaultMessagesFile":"C:\\Users\\nepsa\\AppData\\Local\\Programs\\cursor\\resources\\app\\out\\nls.messages.json","locale":"en-us","availableLanguages":{}}
+CURSOR_RIPGREP_PATH=c:\Users\nepsa\AppData\Local\Programs\cursor\resources\app\node_modules\@vscode\ripgrep\bin\rg.exe
+PSExecutionPolicyPreference=Bypass
+EFC_13256_4126798990=1
+USERDOMAIN_ROAMINGPROFILE=OK
+VSCODE_CODE_CACHE_PATH=C:\Users\nepsa\AppData\Roaming\Cursor\CachedData\dd066f332fcea7382764400fde902f61920648d0
+PUBLIC=C:\Users\Public
+
+
+------------
+Diagnostic: File system
+Skipped: False
+Success: True
+Exception: None
+Log:
+Temporary directory is 'C:\Users\nepsa\AppData\Local\Temp\'...
+Checking basic file I/O...
+Writing to temporary file 'C:\Users\nepsa\AppData\Local\Temp\3f564d48890631c5ad177e94'... OK
+Reading from temporary file 'C:\Users\nepsa\AppData\Local\Temp\3f564d48890631c5ad177e94'... OK
+Deleting temporary file 'C:\Users\nepsa\AppData\Local\Temp\3f564d48890631c5ad177e94'... OK
+Testing IFileSystem instance...
+UserHomePath: C:\Users\nepsa
+UserDataDirectoryPath: C:\Users\nepsa\.gcm
+GetCurrentDirectory(): C:\Users\nepsa\Downloads\Luckyspins\Luckyspin
+
+------------
+Diagnostic: Networking
+Skipped: False
+Success: True
+Exception: None
+Log:
+Checking networking and HTTP stack...
+Creating HTTP client... OK
+IsNetworkAvailable: True
+Sending HEAD request to http://example.com...Sending HEAD request to https://example.com... OK
+ OK
+Acquiring free TCP port... OK
+Testing local HTTP loopback connections...
+Creating new HTTP listener for http://localhost:54701/... OK
+Waiting for loopback connection... OK
+Writing response... OK
+Waiting for response data... OK
+Loopback connection data OK
+
+------------
+Diagnostic: Git
+Skipped: False
+Success: True
+Exception: None
+Log:
+Getting Git version... OK
+Git version is '2.53.0.windows.3'
+Locating current repository...Git repository at 'C:/Users/nepsa/Downloads/Luckyspins/Luckyspin/.git'
+ OK
+Listing all Git configuration... OK
+Git configuration:
+file:C:/Program Files/Git/etc/gitconfig	diff.astextplain.textconv=astextplain
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.clean=git-lfs clean -- %f
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.smudge=git-lfs smudge -- %f
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.process=git-lfs filter-process
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.required=true
+file:C:/Program Files/Git/etc/gitconfig	http.sslbackend=schannel
+file:C:/Program Files/Git/etc/gitconfig	core.autocrlf=true
+file:C:/Program Files/Git/etc/gitconfig	core.fscache=true
+file:C:/Program Files/Git/etc/gitconfig	core.symlinks=false
+file:C:/Program Files/Git/etc/gitconfig	pull.rebase=false
+file:C:/Program Files/Git/etc/gitconfig	credential.helper=manager
+file:C:/Program Files/Git/etc/gitconfig	credential.https://dev.azure.com.usehttppath=true
+file:C:/Program Files/Git/etc/gitconfig	init.defaultbranch=master
+file:C:/Users/nepsa/.gitconfig	user.email=nsachet24@tbc.edu.np
+file:C:/Users/nepsa/.gitconfig	user.name=Sachet Nepal
+file:C:/Users/nepsa/.gitconfig	filter.lfs.clean=git-lfs clean -- %f
+file:C:/Users/nepsa/.gitconfig	filter.lfs.smudge=git-lfs smudge -- %f
+file:C:/Users/nepsa/.gitconfig	filter.lfs.process=git-lfs filter-process
+file:C:/Users/nepsa/.gitconfig	filter.lfs.required=true
+file:.git/config	core.repositoryformatversion=0
+file:.git/config	core.filemode=false
+file:.git/config	core.bare=false
+file:.git/config	core.logallrefupdates=true
+file:.git/config	core.symlinks=false
+file:.git/config	core.ignorecase=true
+file:.git/config	remote.origin.url=https://github.com/gandup340/Luckyspin.git
+file:.git/config	remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*
+file:.git/config	branch.main.remote=origin
+file:.git/config	branch.main.merge=refs/heads/main
+file:.git/config	branch.main.vscode-merge-base=origin/main
+file:.git/config	user.name=gandup340
+file:.git/config	user.email=gandup340@gmail.com
+
+
+------------
+Diagnostic: Credential storage
+Skipped: False
+Success: True
+Exception: None
+Log:
+ICredentialStore instance is of type: CredentialStore
+Writing test credential... OK
+Reading test credential... OK
+Deleting test credential... OK
+
+------------
+Diagnostic: Microsoft authentication (AAD/MSA)
+Skipped: False
+Success: True
+Exception: None
+Log:
+Broker is not enabled.
+Flow type is: Auto
+Gathering MSAL token cache data... OK
+CacheDirectory: C:\Users\nepsa\AppData\Local\.IdentityService
+CacheFileName: msal.cache
+CacheFilePath: C:\Users\nepsa\AppData\Local\.IdentityService\msal.cache
+Creating cache helper... OK
+Verifying MSAL token cache persistence... OK
+
+------------
+Diagnostic: GitHub API
+Skipped: False
+Success: True
+Exception: None
+Log:
+Using 'https://github.com/' as API target.
+Querying '/meta' endpoint... OK
+
