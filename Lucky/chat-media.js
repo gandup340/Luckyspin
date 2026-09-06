@@ -178,6 +178,61 @@
         border-color: rgba(240, 113, 103, 0.45);
         color: #f07167;
       }
+      .lucky-call-controls {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .lucky-call-controls[hidden] { display: none !important; }
+      .lucky-call-control {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+        min-width: 4.5rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #eef1f4;
+        font: inherit;
+        cursor: pointer;
+      }
+      .lucky-call-control:active { transform: scale(0.96); }
+      .lucky-call-control-icon {
+        width: 3.25rem;
+        height: 3.25rem;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 1.25rem;
+        background: #2a2f36;
+        border: 1px solid rgba(238, 241, 244, 0.14);
+      }
+      .lucky-call-control.is-active .lucky-call-control-icon {
+        background: rgba(43, 184, 174, 0.18);
+        border-color: rgba(61, 205, 194, 0.45);
+        color: #3dcdc2;
+      }
+      .lucky-call-control.is-muted .lucky-call-control-icon,
+      .lucky-call-control.is-speaker-off .lucky-call-control-icon {
+        background: rgba(240, 113, 103, 0.14);
+        border-color: rgba(240, 113, 103, 0.45);
+        color: #f07167;
+      }
+      .lucky-call-control.is-end .lucky-call-control-icon {
+        background: #f07167;
+        border-color: #f07167;
+        color: #0a0c0e;
+        transform: rotate(135deg);
+      }
+      .lucky-call-control-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #8b949e;
+        letter-spacing: 0.02em;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -203,8 +258,19 @@
           <div class="lucky-call-actions" id="lucky-call-outgoing-actions" hidden>
             <button type="button" class="lucky-call-btn is-end" id="lucky-call-cancel">Cancel call</button>
           </div>
-          <div class="lucky-call-actions" id="lucky-call-active-actions" hidden>
-            <button type="button" class="lucky-call-btn is-end" id="lucky-call-end">End call</button>
+          <div class="lucky-call-controls" id="lucky-call-active-actions" hidden>
+            <button type="button" class="lucky-call-control is-mute" id="lucky-call-mute" aria-pressed="false">
+              <span class="lucky-call-control-icon" aria-hidden="true">🎤</span>
+              <span class="lucky-call-control-label">Mute</span>
+            </button>
+            <button type="button" class="lucky-call-control is-speaker" id="lucky-call-speaker" aria-pressed="true">
+              <span class="lucky-call-control-icon" aria-hidden="true">🔊</span>
+              <span class="lucky-call-control-label">Speaker</span>
+            </button>
+            <button type="button" class="lucky-call-control is-end" id="lucky-call-end" aria-label="End call">
+              <span class="lucky-call-control-icon" aria-hidden="true">📞</span>
+              <span class="lucky-call-control-label">End</span>
+            </button>
           </div>
         </div>
       `;
@@ -224,9 +290,20 @@
       decline: root.querySelector("#lucky-call-decline"),
       cancel: root.querySelector("#lucky-call-cancel"),
       end: root.querySelector("#lucky-call-end"),
+      mute: root.querySelector("#lucky-call-mute"),
+      speaker: root.querySelector("#lucky-call-speaker"),
     };
 
-    let handlers = { onAccept: null, onDecline: null, onCancel: null, onEnd: null };
+    let handlers = {
+      onAccept: null,
+      onDecline: null,
+      onCancel: null,
+      onEnd: null,
+      onMute: null,
+      onSpeaker: null,
+    };
+    let muted = false;
+    let speakerOn = true;
 
     function bind(btn, fn) {
       btn.replaceWith(btn.cloneNode(true));
@@ -235,10 +312,34 @@
       return fresh;
     }
 
+    function setMutedState(next) {
+      muted = !!next;
+      els.mute.classList.toggle("is-muted", muted);
+      els.mute.classList.toggle("is-active", !muted);
+      els.mute.setAttribute("aria-pressed", String(muted));
+      const label = els.mute.querySelector(".lucky-call-control-label");
+      const icon = els.mute.querySelector(".lucky-call-control-icon");
+      if (label) label.textContent = muted ? "Unmute" : "Mute";
+      if (icon) icon.textContent = muted ? "🔇" : "🎤";
+    }
+
+    function setSpeakerState(next) {
+      speakerOn = !!next;
+      els.speaker.classList.toggle("is-speaker-off", !speakerOn);
+      els.speaker.classList.toggle("is-active", speakerOn);
+      els.speaker.setAttribute("aria-pressed", String(speakerOn));
+      const label = els.speaker.querySelector(".lucky-call-control-label");
+      const icon = els.speaker.querySelector(".lucky-call-control-icon");
+      if (label) label.textContent = speakerOn ? "Speaker" : "Earpiece";
+      if (icon) icon.textContent = speakerOn ? "🔊" : "📱";
+    }
+
     els.accept = bind(els.accept, () => handlers.onAccept?.());
     els.decline = bind(els.decline, () => handlers.onDecline?.());
     els.cancel = bind(els.cancel, () => handlers.onCancel?.());
     els.end = bind(els.end, () => handlers.onEnd?.());
+    els.mute = bind(els.mute, () => handlers.onMute?.());
+    els.speaker = bind(els.speaker, () => handlers.onSpeaker?.());
 
     function showMode(mode) {
       els.incoming.hidden = mode !== "incoming";
@@ -267,9 +368,11 @@
         els.status.textContent = status || "Waiting for answer…";
         showMode("outgoing");
       },
-      showActive({ title, name, status, onEnd }) {
+      showActive({ title, name, status, onEnd, onMute, onSpeaker }) {
         stopRingtone();
-        handlers = { onAccept: null, onDecline: null, onCancel: onEnd, onEnd };
+        handlers = { onAccept: null, onDecline: null, onCancel: onEnd, onEnd, onMute, onSpeaker };
+        setMutedState(false);
+        setSpeakerState(true);
         els.title.textContent = title || "On call";
         els.name.textContent = name || "";
         els.status.textContent = status || "Connected";
@@ -278,10 +381,25 @@
       updateStatus(text) {
         if (text) els.status.textContent = text;
       },
+      setMuted(next) {
+        setMutedState(next);
+      },
+      setSpeaker(next) {
+        setSpeakerState(next);
+      },
       hide() {
         stopRingtone();
         root.hidden = true;
-        handlers = { onAccept: null, onDecline: null, onCancel: null, onEnd: null };
+        handlers = {
+          onAccept: null,
+          onDecline: null,
+          onCancel: null,
+          onEnd: null,
+          onMute: null,
+          onSpeaker: null,
+        };
+        setMutedState(false);
+        setSpeakerState(true);
       },
     };
   }
@@ -408,6 +526,8 @@
     let pendingIce = [];
     let makingOffer = false;
     let callConversationId = null;
+    let micMuted = false;
+    let speakerOn = true;
     const overlay = useOverlay ? createCallOverlay() : null;
 
     function peerLabel() {
@@ -448,7 +568,56 @@
           endCall(true);
           setStatus?.("Call ended.");
         },
+        onMute: () => toggleMute(),
+        onSpeaker: () => toggleSpeaker(),
       });
+      overlay?.setMuted(micMuted);
+      overlay?.setSpeaker(speakerOn);
+      applySpeakerRoute();
+    }
+
+    function toggleMute() {
+      micMuted = !micMuted;
+      localStream?.getAudioTracks()?.forEach((track) => {
+        track.enabled = !micMuted;
+      });
+      overlay?.setMuted(micMuted);
+      setStatus?.(micMuted ? "Microphone muted" : "Microphone on");
+    }
+
+    async function applySpeakerRoute() {
+      if (!remoteAudioEl) return;
+      remoteAudioEl.muted = false;
+      if (speakerOn) {
+        remoteAudioEl.volume = 1;
+        if (typeof remoteAudioEl.setSinkId === "function") {
+          try {
+            await remoteAudioEl.setSinkId("");
+          } catch {
+            /* ignore */
+          }
+        }
+      } else {
+        remoteAudioEl.volume = 0.45;
+        if (typeof remoteAudioEl.setSinkId === "function" && navigator.mediaDevices?.enumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const comm =
+              devices.find((d) => d.kind === "audiooutput" && /handset|phone|ear|communication/i.test(d.label)) ||
+              devices.find((d) => d.kind === "audiooutput" && d.deviceId === "communications");
+            if (comm?.deviceId) await remoteAudioEl.setSinkId(comm.deviceId);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+
+    function toggleSpeaker() {
+      speakerOn = !speakerOn;
+      overlay?.setSpeaker(speakerOn);
+      applySpeakerRoute();
+      setStatus?.(speakerOn ? "Speaker on" : "Earpiece mode");
     }
 
     async function flushIce(peer) {
@@ -495,7 +664,9 @@
       pc.ontrack = (ev) => {
         if (remoteAudioEl) {
           remoteAudioEl.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+          remoteAudioEl.setAttribute("playsinline", "");
           remoteAudioEl.play?.().catch(() => {});
+          applySpeakerRoute();
         }
       };
       return pc;
@@ -646,6 +817,8 @@
       pendingIce = [];
       makingOffer = false;
       callConversationId = null;
+      micMuted = false;
+      speakerOn = true;
       if (localAudioEl) localAudioEl.srcObject = null;
       if (remoteAudioEl) remoteAudioEl.srcObject = null;
       setCallUi(false);

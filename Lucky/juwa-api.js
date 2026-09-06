@@ -306,6 +306,15 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       return store.getRequest(row.id);
     }
 
+    // AUTO GAME DEPOSIT DISABLED — manual admin confirm only (see /api/admin/juwa/requests/:id/confirm).
+    await replyAskPlayer(
+      row,
+      "Got it — support will add your balance manually. Please wait for confirmation.",
+      admin
+    );
+    return store.getRequest(row.id);
+
+    /*
     await replyAskPlayer(row, addingNowText(username, amount, game), admin);
     executeJuwaAdd(row.id, {
       username,
@@ -315,6 +324,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       auditMessage: auditMessage || "Auto-started from customer chat",
     }).catch((err) => console.warn("[juwa] auto execute:", err?.message || err));
     return store.getRequest(row.id);
+    */
   }
 
   /**
@@ -529,7 +539,8 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
 
     let request = created.request;
     if (parsed.ok && request && !created.error) {
-      request = await startAddIfReady(request, actorName(req), "Auto-started from chat (no admin confirm)");
+      // AUTO GAME DEPOSIT DISABLED — create request only; admin must confirm manually.
+      // request = await startAddIfReady(request, actorName(req), "Auto-started from chat (no admin confirm)");
     }
 
     res.json({ ...created, request, parsed });

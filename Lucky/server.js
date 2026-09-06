@@ -1117,7 +1117,8 @@ async function ingestFacebookMessagingEvent(event) {
     (s) => s.role === "admin"
   );
 
-  triggerJuwaFromCustomerMessage(convo, entry);
+  // AUTO GAME DEPOSIT DISABLED — no auto add/withdraw from chat (Facebook).
+  // triggerJuwaFromCustomerMessage(convo, entry);
 }
 
 function verifyFacebookSignature(req) {
@@ -1208,6 +1209,9 @@ function recentCustomerJuwaText(convo, limit = 6) {
 }
 
 function triggerJuwaFromCustomerMessage(convo, entry) {
+  // AUTO GAME DEPOSIT DISABLED — re-enable by uncommenting below and server.js call sites.
+  return;
+  /*
   if (!juwaApi?.handleCustomerJuwaMessage || !convo?.id || !entry?.id) return;
   const text = String(entry.text || "");
   juwaApi
@@ -1218,6 +1222,7 @@ function triggerJuwaFromCustomerMessage(convo, entry) {
       recentText: recentCustomerJuwaText(convo),
     })
     .catch((err) => console.warn("[juwa] customer hook:", err?.message || err));
+  */
 }
 
 app.get("/api/facebook/webhook", (req, res) => {
@@ -2219,7 +2224,8 @@ wss.on("connection", (ws, req) => {
             (s.role === "customer" && s.conversationId === conversationId) ||
             s.role === "admin"
         );
-        triggerJuwaFromCustomerMessage(convo, entry);
+        // AUTO GAME DEPOSIT DISABLED — no auto add/withdraw from player chat.
+        // triggerJuwaFromCustomerMessage(convo, entry);
         return;
       }
 
