@@ -44,7 +44,7 @@ const FACEBOOK_GRAPH_VERSION = String(process.env.FACEBOOK_GRAPH_VERSION || "v21
 const FACEBOOK_ENABLED = Boolean(FACEBOOK_PAGE_ACCESS_TOKEN && FACEBOOK_VERIFY_TOKEN);
 const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
 const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
-const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@luckyvipsgame.com").trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@slotvalley.com").trim();
 const PUSH_ENABLED = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 const FACEBOOK_SUBSCRIBED_FIELDS = [
   "messages",
@@ -436,12 +436,12 @@ async function sendPushToAll({ title, body, icon, url, data, tag }) {
   if (!list.length) return { ok: true, sent: 0, failed: 0, removed: 0 };
 
   const payload = JSON.stringify({
-    title: String(title || "LUCKY VIPS GAME").slice(0, 80),
+    title: String(title || "Slot Valley").slice(0, 80),
     body: String(body || "").slice(0, 180),
     icon: String(icon || "/assets/icons/icon-192.png"),
     badge: "/assets/icons/icon-192.png",
     url: String(url || "/"),
-    tag: String(tag || "lucky-vips"),
+    tag: String(tag || "slot-valley"),
     data: data && typeof data === "object" ? data : {},
   });
 
@@ -500,7 +500,7 @@ async function sendPushToTargets({ title, body, icon, url, data, tag, conversati
   if (!useList.length) return { ok: true, sent: 0, failed: 0, removed: 0 };
 
   const payload = JSON.stringify({
-    title: String(title || "LUCKY VIPS GAME").slice(0, 80),
+    title: String(title || "Slot Valley").slice(0, 80),
     body: String(body || "").slice(0, 180),
     icon: String(icon || "/assets/icons/icon-192.png"),
     badge: "/assets/icons/icon-192.png",
@@ -845,7 +845,7 @@ async function postSupportReply(conversationId, text) {
   );
 
   sendPushToTargets({
-    title: "LUCKY VIPS GAME Support",
+    title: "Slot Valley Support",
     body: body.slice(0, 140),
     url: "/",
     tag: `chat-${id}`,
@@ -917,7 +917,7 @@ async function subscribeFacebookPage() {
         facebookRuntime.pageSubscribe = {
           ok: false,
           error: data?.error?.message || `subscribed_apps failed (${res.status})`,
-          hint: "In Meta: Messenger → Webhooks → Page → subscribe messages for Lucky Vips Game. Token needs pages_messaging + pages_manage_metadata.",
+          hint: "In Meta: Messenger → Webhooks → Page → subscribe messages for Slot Valley. Token needs pages_messaging + pages_manage_metadata.",
         };
       }
     } else {
@@ -1597,7 +1597,7 @@ app.post("/api/admin/push/send", auth, requireAdmin, async (req, res) => {
   const body = String(req.body?.body || "").trim();
   const icon = String(req.body?.icon || "/assets/icons/icon-192.png").trim();
   const url = String(req.body?.url || "/").trim() || "/";
-  const tag = String(req.body?.tag || "lucky-vips").trim();
+  const tag = String(req.body?.tag || "slot-valley").trim();
   const data = req.body?.data && typeof req.body.data === "object" ? req.body.data : {};
   if (!title || !body) {
     return res.status(400).json({ error: "title and body are required" });
@@ -1962,7 +1962,7 @@ function ensureConversation(id, profile = {}) {
         {
           id: crypto.randomUUID(),
           from: "system",
-          text: "Welcome to LUCKY VIPS GAME Support. An agent will reply here on the site.",
+          text: "Welcome to Slot Valley Support. An agent will reply here on the site.",
           at: Date.now(),
         },
       ],
@@ -2197,7 +2197,7 @@ wss.on("connection", (ws, req) => {
                 ? "New video from support"
                 : String(entry.text || "New support message").slice(0, 140);
         sendPushToTargets({
-          title: "LUCKY VIPS GAME Support",
+          title: "Slot Valley Support",
           body: pushBody,
           url: "/",
           tag: `chat-${conversationId}`,
@@ -2355,7 +2355,7 @@ bootChatPersistence()
 
 server.listen(PORT, HOST, () => {
   const displayHost = HOST === "0.0.0.0" ? "localhost" : HOST;
-  console.log(`LUCKY VIPS GAME running at http://${displayHost}:${PORT}`);
+  console.log(`Slot Valley running at http://${displayHost}:${PORT}`);
   console.log(`Admin panel:      http://${displayHost}:${PORT}/admin`);
   console.log(`Support panel:    http://${displayHost}:${PORT}/support`);
   console.log(

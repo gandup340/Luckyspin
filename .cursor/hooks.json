@@ -6,6 +6,21 @@
         "command": "node .cursor/hooks/allow-gamevault-recharge.js",
         "matcher": "(gamevault|orion)_login_add"
       }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/auto-commit.js"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/auto-commit.js"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node .cursor/hooks/auto-commit.js"
+      }
     ]
   }
 }

@@ -1,29 +1,29 @@
 {
   "whatsapp": "0000000000",
-  "telegram": "lucky_vips_game",
-  "messenger": "luckyvipsgame",
+  "telegram": "slot_valley",
+  "messenger": "slotvalley",
   "facebook": [
     {
       "id": "fb1",
-      "name": "LUCKY VIPS GAME Official",
+      "name": "Slot Valley Official",
       "url": "https://www.facebook.com/",
       "desc": "Announcements & promos"
     },
     {
       "id": "fb2",
-      "name": "LUCKY VIPS GAME Players",
+      "name": "Slot Valley Players",
       "url": "https://www.facebook.com/",
       "desc": "Community & winners"
     },
     {
       "id": "fb3",
-      "name": "LUCKY VIPS GAME Agents",
+      "name": "Slot Valley Agents",
       "url": "https://www.facebook.com/",
       "desc": "Agent network updates"
     },
     {
       "id": "fb4",
-      "name": "LUCKY VIPS GAME Support",
+      "name": "Slot Valley Support",
       "url": "https://www.facebook.com/",
       "desc": "Help & verified contact"
     }

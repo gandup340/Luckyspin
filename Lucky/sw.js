@@ -1,5 +1,5 @@
-/* LUCKY VIPS GAME — service worker (PWA cache + Web Push) */
-const CACHE_NAME = "lucky-vips-shell-v2";
+/* Slot Valley — service worker (PWA cache + Web Push) */
+const CACHE_NAME = "slot-valley-shell-v3";
 const PRECACHE = [
   "/",
   "/index.html",
@@ -64,7 +64,7 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", (event) => {
   let payload = {
-    title: "LUCKY VIPS GAME",
+    title: "Slot Valley",
     body: "You have a new update.",
     icon: "/assets/icons/icon-192.png",
     badge: "/assets/icons/icon-192.png",
@@ -99,10 +99,10 @@ self.addEventListener("push", (event) => {
     renotify: true,
     requireInteraction: false,
     silent: false,
-    tag: String(payload.tag || "lucky-vips"),
+    tag: String(payload.tag || "slot-valley"),
   };
 
-  event.waitUntil(self.registration.showNotification(String(payload.title || "LUCKY VIPS GAME"), options));
+  event.waitUntil(self.registration.showNotification(String(payload.title || "Slot Valley"), options));
 });
 
 self.addEventListener("notificationclick", (event) => {

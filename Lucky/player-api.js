@@ -149,12 +149,12 @@ async function issueVerification(player, { reason = "verify" } = {}) {
   );
   const subject =
     reason === "resend"
-      ? "Your LUCKY VIPS GAME verification code"
-      : "Verify your LUCKY VIPS GAME email";
+      ? "Your Slot Valley verification code"
+      : "Verify your Slot Valley email";
   const text = `Your verification code is ${code}. It expires in ${VERIFY_MINUTES} minutes.`;
   const html = brandEmailHtml({
     title: "Verify your email",
-    bodyHtml: `<p>Welcome to LUCKY VIPS GAME.</p>
+    bodyHtml: `<p>Welcome to Slot Valley.</p>
       <p>Your verification code is:</p>
       <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
       <p>This code expires in ${VERIFY_MINUTES} minutes.</p>`,
@@ -181,11 +181,11 @@ async function issuePasswordReset(player) {
      WHERE id = $1`,
     [player.id, hashVerifyCode(code), expires.toISOString()]
   );
-  const subject = "Reset your LUCKY VIPS GAME password";
+  const subject = "Reset your Slot Valley password";
   const text = `Your password reset code is ${code}. It expires in ${VERIFY_MINUTES} minutes. If you did not request this, ignore this email.`;
   const html = brandEmailHtml({
     title: "Reset your password",
-    bodyHtml: `<p>We received a request to reset your LUCKY VIPS GAME password.</p>
+    bodyHtml: `<p>We received a request to reset your Slot Valley password.</p>
       <p>Your reset code is:</p>
       <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
       <p>This code expires in ${VERIFY_MINUTES} minutes.</p>

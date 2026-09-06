@@ -1,8 +1,8 @@
 {
-  "name": "lucky-vips-game",
+  "name": "slot-valley",
   "version": "1.0.0.35",
   "private": true,
-  "description": "LUCKY VIPS GAME casino portal with admin panel, support chat, and Facebook Messenger",
+  "description": "Slot Valley casino portal with admin panel, support chat, and Facebook Messenger",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

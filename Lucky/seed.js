@@ -3,7 +3,7 @@ const path = require("path");
 const bcrypt = require("bcryptjs");
 
 const gamesSrc = fs.readFileSync(path.join(__dirname, "games.js"), "utf8");
-const match = gamesSrc.match(/window\.LUCKY_VIPS_GAMES = (\[[\s\S]*?\]);?\s*$/m);
+const match = gamesSrc.match(/window\.SLOT_VALLEY_GAMES = (\[[\s\S]*?\]);?\s*$/m);
 if (!match) {
   // fallback: strip assignment
   const start = gamesSrc.indexOf("[");
@@ -32,30 +32,30 @@ const config = {
     },
   ],
   whatsapp: "0000000000",
-  telegram: "lucky_vips_game",
-  messenger: "luckyvipsgame",
+  telegram: "slot_valley",
+  messenger: "slotvalley",
   facebook: [
     {
       id: "fb1",
-      name: "LUCKY VIPS GAME Official",
+      name: "Slot Valley Official",
       url: "https://www.facebook.com/",
       desc: "Announcements & promos",
     },
     {
       id: "fb2",
-      name: "LUCKY VIPS GAME Players",
+      name: "Slot Valley Players",
       url: "https://www.facebook.com/",
       desc: "Community & winners",
     },
     {
       id: "fb3",
-      name: "LUCKY VIPS GAME Agents",
+      name: "Slot Valley Agents",
       url: "https://www.facebook.com/",
       desc: "Agent network updates",
     },
     {
       id: "fb4",
-      name: "LUCKY VIPS GAME Support",
+      name: "Slot Valley Support",
       url: "https://www.facebook.com/",
       desc: "Help & verified contact",
     },

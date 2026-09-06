@@ -1,7 +1,7 @@
 {
-  "name": "LUCKY VIPS GAME",
-  "short_name": "Lucky VIPS",
-  "description": "LUCKY VIPS GAME official portal — verified player game links, support, and spin.",
+  "name": "Slot Valley",
+  "short_name": "Slot Valley",
+  "description": "Slot Valley official portal — verified player game links, support, and spin.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

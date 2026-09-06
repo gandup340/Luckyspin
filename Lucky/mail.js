@@ -17,7 +17,7 @@ function smtpSettings() {
   const secure = secureEnv === "1" || secureEnv === "true" || port === 465;
   const from =
     String(process.env.EMAIL_FROM || "").trim() ||
-    (user ? `LUCKY VIPS GAME <${user}>` : "LUCKY VIPS GAME <noreply@luckyvipsgame.com>");
+    (user ? `Slot Valley <${user}>` : "Slot Valley <noreply@slotvalley.com>");
   return { host, port, user, pass, secure, from };
 }
 
@@ -45,7 +45,7 @@ function brandEmailHtml({ title, bodyHtml }) {
   <body style="margin:0;padding:0;background:#141618;color:#eef1f4;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:520px;margin:0 auto;padding:28px 18px;">
       <div style="background:#1b1e22;border:1px solid #2a3036;border-radius:10px;padding:24px;">
-        <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#3dcdc2;font-weight:700;">LUCKY VIPS GAME</p>
+        <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#3dcdc2;font-weight:700;">Slot Valley</p>
         <h1 style="margin:0 0 14px;font-size:22px;line-height:1.25;color:#eef1f4;">${title}</h1>
         <div style="font-size:15px;line-height:1.55;color:#c4cad1;">${bodyHtml}</div>
       </div>

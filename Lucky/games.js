@@ -1,4 +1,4 @@
-window.LUCKY_VIPS_GAMES = [
+window.SLOT_VALLEY_GAMES = [
   {
     name: "Juwa",
     image: "assets/games/juwa.webp",

@@ -84,8 +84,8 @@
       el.hidden = !admin;
     });
     const brand = document.querySelector(".side-brand");
-    if (brand) brand.textContent = admin ? "LUCKY VIPS GAME Admin" : "LUCKY VIPS GAME Support";
-    document.title = admin ? "LUCKY VIPS GAME Admin" : "LUCKY VIPS GAME Support";
+    if (brand) brand.textContent = admin ? "Slot Valley Admin" : "Slot Valley Support";
+    document.title = admin ? "Slot Valley Admin" : "Slot Valley Support";
     if (!admin) {
       document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("is-active"));
       document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
@@ -102,7 +102,7 @@
     const sub = document.getElementById("login-sub");
     if (title) title.textContent = "Support";
     if (sub) sub.textContent = "Reply to website and Facebook Messenger chats";
-    document.title = "LUCKY VIPS GAME Support";
+    document.title = "Slot Valley Support";
   }
 
   function setMenuOpen(open) {

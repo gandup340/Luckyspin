@@ -86,7 +86,7 @@
     document.querySelectorAll(".player-nav-btn").forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.playerView === view);
     });
-    if (titleEl) titleEl.textContent = titles[view] || "LUCKY VIPS";
+    if (titleEl) titleEl.textContent = titles[view] || "Slot Valley";
     closeDrawer();
     if (view === "settings") fillSettings();
     if (view === "spin") ensureSpinFrame();
