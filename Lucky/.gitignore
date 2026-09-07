@@ -2,3 +2,10 @@ node_modules/
 uploads/
 .env
 *.log
+data/audit-log.json
+data/chats.json
+data/customers.json
+data/spins.json
+data/push-subscriptions.json
+# Keep config structure in git but rotate passwords via ADMIN_SYNC / admin panel.
+# Never commit real SMTP / TURN / Facebook secrets.

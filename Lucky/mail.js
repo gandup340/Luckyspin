@@ -1,5 +1,10 @@
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
+
+const IS_PROD = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+const VERIFY_TOKEN_BYTES = 24; // 48 hex chars
+const BCRYPT_ROUNDS = 10;
 
 let transporter = null;
 
@@ -31,7 +36,6 @@ function getTransporter() {
       secure: cfg.secure,
       auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
       tls: {
-        // Many shared hosts use mismatched certs on alternate names.
         rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "1") !== "0",
       },
     });
@@ -57,13 +61,16 @@ function brandEmailHtml({ title, bodyHtml }) {
 
 /**
  * Send transactional email over SMTP.
- * Returns { sent, previewCode, error }.
- * previewCode is returned when SMTP is not configured or send fails.
+ * In production, never returns previewCode — fail closed when SMTP is unavailable.
+ * In development, previewCode may be returned when SMTP is missing/fails.
  */
 async function sendMail({ to, subject, text, html, previewCode, title }) {
   const cfg = smtpSettings();
   if (!cfg) {
-    console.log(`[email:fallback] SMTP not configured. to=${to} subject=${subject}\n${text}`);
+    console.log(`[email:fallback] SMTP not configured. to=${to} subject=${subject}`);
+    if (IS_PROD) {
+      return { sent: false, previewCode: null, error: "Email service unavailable" };
+    }
     return { sent: false, previewCode: previewCode || null, error: "SMTP not configured" };
   }
 
@@ -88,7 +95,10 @@ async function sendMail({ to, subject, text, html, previewCode, title }) {
     return { sent: true, previewCode: null };
   } catch (err) {
     console.error("sendMail SMTP:", err.message || err);
-    console.log(`[email:fallback] to=${to} subject=${subject}\n${text}`);
+    if (IS_PROD) {
+      return { sent: false, previewCode: null, error: err.message || "SMTP send failed" };
+    }
+    console.log(`[email:fallback] to=${to} subject=${subject}`);
     return {
       sent: false,
       previewCode: previewCode || null,
@@ -97,12 +107,27 @@ async function sendMail({ to, subject, text, html, previewCode, title }) {
   }
 }
 
+/** Long random token for email verification / password reset (not a 6-digit PIN). */
 function makeVerifyCode() {
-  return String(crypto.randomInt(100000, 999999));
+  return crypto.randomBytes(VERIFY_TOKEN_BYTES).toString("hex");
 }
 
-function hashVerifyCode(code) {
-  return crypto.createHash("sha256").update(String(code)).digest("hex");
+async function hashVerifyCode(code) {
+  return bcrypt.hash(String(code), BCRYPT_ROUNDS);
+}
+
+async function verifyCodeMatch(code, hash) {
+  if (!code || !hash) return false;
+  try {
+    // Legacy SHA256 hex hashes (64 chars) — migrate path for older rows
+    if (/^[a-f0-9]{64}$/i.test(String(hash)) && !String(hash).startsWith("$2")) {
+      const legacy = crypto.createHash("sha256").update(String(code)).digest("hex");
+      return legacy === String(hash).toLowerCase();
+    }
+    return await bcrypt.compare(String(code), String(hash));
+  } catch {
+    return false;
+  }
 }
 
 module.exports = {
@@ -111,5 +136,6 @@ module.exports = {
   sendMail,
   makeVerifyCode,
   hashVerifyCode,
+  verifyCodeMatch,
   brandEmailHtml,
 };

@@ -1,13 +1,23 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { dbEnabled, query, withTransaction } = require("./db");
-const { sendMail, makeVerifyCode, hashVerifyCode, brandEmailHtml } = require("./mail");
+const {
+  sendMail,
+  makeVerifyCode,
+  hashVerifyCode,
+  verifyCodeMatch,
+  brandEmailHtml,
+  emailConfigured,
+} = require("./mail");
+const { validatePlayerPassword, MIN_PLAYER_PASSWORD } = require("./password-policy");
+const { auditLog, clientIp } = require("./audit-log");
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_DAYS = 90;
 const PLAYER_COOKIE = "lucky_player_token";
 const VERIFY_MINUTES = 30;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VERIFY_TOKEN_RE = /^[a-f0-9]{32,96}$/i;
 
 function publicPlayer(row) {
   if (!row) return null;
@@ -122,7 +132,8 @@ function clearPlayerSessionCookie(res, req) {
 
 function sendAuth(res, req, { token, player, extra = {} }) {
   setPlayerSessionCookie(res, token, req);
-  return res.json({ ok: true, token, player, sessionDays: SESSION_DAYS, ...extra });
+  // Never return the session token in the JSON body — HttpOnly cookie only.
+  return res.json({ ok: true, player, sessionDays: SESSION_DAYS, ...extra });
 }
 
 function readPlayerToken(req) {
@@ -138,6 +149,7 @@ function readPlayerToken(req) {
 async function issueVerification(player, { reason = "verify" } = {}) {
   const code = makeVerifyCode();
   const expires = new Date(Date.now() + VERIFY_MINUTES * 60 * 1000);
+  const codeHash = await hashVerifyCode(code);
   await query(
     `UPDATE players
      SET email_verify_code_hash = $2,
@@ -145,7 +157,7 @@ async function issueVerification(player, { reason = "verify" } = {}) {
          email_verified = false,
          updated_at = now()
      WHERE id = $1`,
-    [player.id, hashVerifyCode(code), expires.toISOString()]
+    [player.id, codeHash, expires.toISOString()]
   );
   const subject =
     reason === "resend"
@@ -156,7 +168,7 @@ async function issueVerification(player, { reason = "verify" } = {}) {
     title: "Verify your email",
     bodyHtml: `<p>Welcome to Slot Valley.</p>
       <p>Your verification code is:</p>
-      <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
+      <p style="font-size:18px;letter-spacing:0.08em;font-weight:700;color:#2bb8ae;margin:16px 0;word-break:break-all;">${code}</p>
       <p>This code expires in ${VERIFY_MINUTES} minutes.</p>`,
   });
   const mail = await sendMail({
@@ -173,13 +185,14 @@ async function issueVerification(player, { reason = "verify" } = {}) {
 async function issuePasswordReset(player) {
   const code = makeVerifyCode();
   const expires = new Date(Date.now() + VERIFY_MINUTES * 60 * 1000);
+  const codeHash = await hashVerifyCode(code);
   await query(
     `UPDATE players
      SET password_reset_code_hash = $2,
          password_reset_expires_at = $3,
          updated_at = now()
      WHERE id = $1`,
-    [player.id, hashVerifyCode(code), expires.toISOString()]
+    [player.id, codeHash, expires.toISOString()]
   );
   const subject = "Reset your Slot Valley password";
   const text = `Your password reset code is ${code}. It expires in ${VERIFY_MINUTES} minutes. If you did not request this, ignore this email.`;
@@ -187,7 +200,7 @@ async function issuePasswordReset(player) {
     title: "Reset your password",
     bodyHtml: `<p>We received a request to reset your Slot Valley password.</p>
       <p>Your reset code is:</p>
-      <p style="font-size:28px;letter-spacing:0.18em;font-weight:700;color:#2bb8ae;margin:16px 0;">${code}</p>
+      <p style="font-size:18px;letter-spacing:0.08em;font-weight:700;color:#2bb8ae;margin:16px 0;word-break:break-all;">${code}</p>
       <p>This code expires in ${VERIFY_MINUTES} minutes.</p>
       <p>If you did not request this, you can ignore this email.</p>`,
   });
@@ -237,12 +250,21 @@ async function playerAuth(req, res, next) {
   }
 }
 
-function mountPlayerApi(app, { auth, requireAdmin }) {
+function mountPlayerApi(app, { auth, requireAdmin, playerAuthIpLimiter, playerAuthEmailLimiter }) {
   ensureEmailSchema().catch((err) => {
     console.error("ensureEmailSchema:", err.message || err);
   });
 
-  app.post("/api/player/register", requireDb, async (req, res) => {
+  const ipLimit = playerAuthIpLimiter || ((_req, _res, next) => next());
+  const emailLimit = playerAuthEmailLimiter || ((_req, _res, next) => next());
+
+  function maybeDevCode(mail) {
+    // Production never exposes codes. Dev may include previewCode when SMTP is down.
+    if (process.env.NODE_ENV === "production" || process.env.RENDER) return null;
+    return mail?.previewCode || null;
+  }
+
+  app.post("/api/player/register", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
       const password = String(req.body?.password || "");
@@ -260,9 +282,8 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       if (!EMAIL_RE.test(email)) {
         return res.status(400).json({ error: "Enter a valid email address" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
+      const pwCheck = await validatePlayerPassword(password);
+      if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error });
       if (!username) username = usernameFromEmail(email);
       if (!/^[a-z0-9_]{3,40}$/.test(username)) {
         return res.status(400).json({ error: "Username must be 3–40 letters, numbers, or _" });
@@ -271,6 +292,12 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       const phoneDigits = phone.replace(/\D/g, "");
       if (phone && phoneDigits.length < 7) {
         return res.status(400).json({ error: "Enter a valid phone number" });
+      }
+
+      if (!emailConfigured() && (process.env.NODE_ENV === "production" || process.env.RENDER)) {
+        return res.status(503).json({
+          error: "Email service is not configured. Registration is temporarily unavailable.",
+        });
       }
 
       let referredBy = null;
@@ -321,16 +348,37 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       }
 
       const mail = await issueVerification(player);
+      if (!mail.sent && !maybeDevCode(mail)) {
+        auditLog({
+          category: "auth",
+          action: "register",
+          actor: email,
+          ip: clientIp(req),
+          success: false,
+          message: "smtp unavailable",
+        });
+        return res.status(503).json({
+          error: "Could not send verification email. Try again later.",
+        });
+      }
       const payload = {
         ok: true,
         needsVerification: true,
         email,
         message: mail.sent
           ? "Check your email for a verification code."
-          : "Email sending is not configured yet — use the code shown below.",
+          : "Email sending is not configured — use the code shown below (dev only).",
         player: publicPlayer({ ...player, email_verified: false }),
       };
-      if (mail.previewCode) payload.devCode = mail.previewCode;
+      const devCode = maybeDevCode(mail);
+      if (devCode) payload.devCode = devCode;
+      auditLog({
+        category: "auth",
+        action: "register",
+        actor: email,
+        ip: clientIp(req),
+        success: true,
+      });
       res.json(payload);
     } catch (err) {
       console.error("register:", err.message || err);
@@ -338,12 +386,12 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     }
   });
 
-  app.post("/api/player/verify-email", requireDb, async (req, res) => {
+  app.post("/api/player/verify-email", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
       const code = String(req.body?.code || "").trim();
-      if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "Enter your email and the 6-digit code" });
+      if (!EMAIL_RE.test(email) || !VERIFY_TOKEN_RE.test(code)) {
+        return res.status(400).json({ error: "Enter your email and the verification code from your email" });
       }
       const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
       const player = found.rows[0];
@@ -359,7 +407,15 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       ) {
         return res.status(400).json({ error: "Code expired. Request a new one." });
       }
-      if (hashVerifyCode(code) !== player.email_verify_code_hash) {
+      if (!(await verifyCodeMatch(code, player.email_verify_code_hash))) {
+        auditLog({
+          category: "auth",
+          action: "verify_email",
+          actor: email,
+          ip: clientIp(req),
+          success: false,
+          message: "invalid code",
+        });
         return res.status(400).json({ error: "Invalid verification code" });
       }
       const updated = await query(
@@ -373,6 +429,13 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         [player.id]
       );
       const token = await createSession(player.id);
+      auditLog({
+        category: "auth",
+        action: "verify_email",
+        actor: email,
+        ip: clientIp(req),
+        success: true,
+      });
       return sendAuth(res, req, { token, player: publicPlayer(updated.rows[0]) });
     } catch (err) {
       console.error("verify-email:", err.message || err);
@@ -380,7 +443,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     }
   });
 
-  app.post("/api/player/resend-verification", requireDb, async (req, res) => {
+  app.post("/api/player/resend-verification", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
       if (!EMAIL_RE.test(email)) {
@@ -393,11 +456,15 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         return res.json({ ok: true, alreadyVerified: true, message: "Email already verified. Sign in." });
       }
       const mail = await issueVerification(player, { reason: "resend" });
+      if (!mail.sent && !maybeDevCode(mail)) {
+        return res.status(503).json({ error: "Could not send verification email. Try again later." });
+      }
       const payload = {
         ok: true,
         message: mail.sent ? "Verification code sent." : "Verification code ready.",
       };
-      if (mail.previewCode) payload.devCode = mail.previewCode;
+      const devCode = maybeDevCode(mail);
+      if (devCode) payload.devCode = devCode;
       res.json(payload);
     } catch (err) {
       console.error("resend-verification:", err.message || err);
@@ -405,7 +472,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     }
   });
 
-  app.post("/api/player/forgot-password", requireDb, async (req, res) => {
+  app.post("/api/player/forgot-password", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
       if (!EMAIL_RE.test(email)) {
@@ -421,9 +488,20 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       if (!player) return res.json(generic);
 
       const mail = await issuePasswordReset(player);
-      if (mail.previewCode) generic.devCode = mail.previewCode;
-      if (!mail.sent && mail.previewCode) {
+      const devCode = maybeDevCode(mail);
+      if (devCode) {
+        generic.devCode = devCode;
         generic.message = "Enter the reset code below to choose a new password.";
+      } else if (!mail.sent) {
+        // Fail closed in production — still return generic message (no account enumeration).
+        auditLog({
+          category: "auth",
+          action: "forgot_password",
+          actor: email,
+          ip: clientIp(req),
+          success: false,
+          message: "smtp unavailable",
+        });
       }
       res.json(generic);
     } catch (err) {
@@ -432,17 +510,16 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     }
   });
 
-  app.post("/api/player/reset-password", requireDb, async (req, res) => {
+  app.post("/api/player/reset-password", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
       const code = String(req.body?.code || "").trim();
       const password = String(req.body?.password || "");
-      if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "Enter your email and the 6-digit code" });
+      if (!EMAIL_RE.test(email) || !VERIFY_TOKEN_RE.test(code)) {
+        return res.status(400).json({ error: "Enter your email and the reset code from your email" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
+      const pwCheck = await validatePlayerPassword(password);
+      if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error });
       const found = await query(`SELECT * FROM players WHERE lower(email) = $1`, [email]);
       const player = found.rows[0];
       if (!player) return res.status(400).json({ error: "Invalid or expired reset code" });
@@ -453,7 +530,15 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       ) {
         return res.status(400).json({ error: "Code expired. Request a new one." });
       }
-      if (hashVerifyCode(code) !== player.password_reset_code_hash) {
+      if (!(await verifyCodeMatch(code, player.password_reset_code_hash))) {
+        auditLog({
+          category: "auth",
+          action: "reset_password",
+          actor: email,
+          ip: clientIp(req),
+          success: false,
+          message: "invalid code",
+        });
         return res.status(400).json({ error: "Invalid reset code" });
       }
 
@@ -471,6 +556,13 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       );
       await query(`DELETE FROM player_sessions WHERE player_id = $1`, [player.id]);
       const token = await createSession(player.id);
+      auditLog({
+        category: "auth",
+        action: "reset_password",
+        actor: email,
+        ip: clientIp(req),
+        success: true,
+      });
       return sendAuth(res, req, { token, player: publicPlayer(updated.rows[0]) });
     } catch (err) {
       console.error("reset-password:", err.message || err);
@@ -478,7 +570,7 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     }
   });
 
-  app.post("/api/player/login", requireDb, async (req, res) => {
+  app.post("/api/player/login", requireDb, ipLimit, emailLimit, async (req, res) => {
     try {
       const password = String(req.body?.password || "");
       const email = normalizeEmail(req.body?.email);
@@ -500,12 +592,29 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         }
       }
 
-      if (!player) return res.status(401).json({ error: "Invalid email or password" });
+      if (!player) {
+        auditLog({
+          category: "auth",
+          action: "player_login",
+          actor: email || username || null,
+          ip: clientIp(req),
+          success: false,
+        });
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
       const ok = await bcrypt.compare(password, player.password_hash);
-      if (!ok) return res.status(401).json({ error: "Invalid email or password" });
+      if (!ok) {
+        auditLog({
+          category: "auth",
+          action: "player_login",
+          actor: player.email || player.username,
+          ip: clientIp(req),
+          success: false,
+        });
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
 
       if (player.email && !player.email_verified) {
-        // Legacy accounts (created before email verification) have no pending code.
         if (!player.email_verify_code_hash) {
           await query(`UPDATE players SET email_verified = true, updated_at = now() WHERE id = $1`, [
             player.id,
@@ -519,12 +628,20 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
             email: player.email,
             error: "Verify your email before signing in.",
           };
-          if (mail.previewCode) payload.devCode = mail.previewCode;
+          const devCode = maybeDevCode(mail);
+          if (devCode) payload.devCode = devCode;
           return res.status(403).json(payload);
         }
       }
 
       const token = await createSession(player.id);
+      auditLog({
+        category: "auth",
+        action: "player_login",
+        actor: player.email || player.username,
+        ip: clientIp(req),
+        success: true,
+      });
       return sendAuth(res, req, { token, player: publicPlayer(player) });
     } catch (err) {
       console.error("login:", err.message || err);
@@ -553,7 +670,6 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     setPlayerSessionCookie(res, req.playerToken, req);
     res.json({
       ok: true,
-      token: req.playerToken,
       player: publicPlayer(req.player),
       referralSpins: Number(spins.rows[0]?.spins || 0),
       sessionDays: SESSION_DAYS,
@@ -583,9 +699,18 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       let payload = { ok: true, player: publicPlayer(player) };
       if (emailChanged) {
         const mail = await issueVerification(player);
+        if (!mail.sent && !(process.env.NODE_ENV !== "production" && !process.env.RENDER && mail.previewCode)) {
+          return res.status(503).json({
+            ok: false,
+            error: "Could not send verification email for the new address.",
+            player: publicPlayer(player),
+          });
+        }
         payload.needsVerification = true;
         payload.message = "Verify your new email address.";
-        if (mail.previewCode) payload.devCode = mail.previewCode;
+        if (process.env.NODE_ENV !== "production" && !process.env.RENDER && mail.previewCode) {
+          payload.devCode = mail.previewCode;
+        }
       }
       res.json(payload);
     } catch (err) {
@@ -600,9 +725,11 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
     try {
       const currentPassword = String(req.body?.currentPassword || "");
       const newPassword = String(req.body?.newPassword || "");
-      if (!currentPassword || newPassword.length < 6) {
-        return res.status(400).json({ error: "Enter your current password and a new password (min 6)." });
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Enter your current password and a new password." });
       }
+      const pwCheck = await validatePlayerPassword(newPassword);
+      if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error });
       const ok = await bcrypt.compare(currentPassword, req.player.password_hash);
       if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
       const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
@@ -614,6 +741,13 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
         req.player.id,
         req.playerToken,
       ]);
+      auditLog({
+        category: "auth",
+        action: "change_password",
+        actor: req.player.email || req.player.username,
+        ip: clientIp(req),
+        success: true,
+      });
       res.json({ ok: true, message: "Password updated." });
     } catch (err) {
       console.error("change-password:", err.message || err);
@@ -669,6 +803,14 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
                  status, created_at AS "createdAt"`,
       [req.player.id, amountCents, method, gameKey, reference, proofUrl]
     );
+    auditLog({
+      category: "wallet",
+      action: "deposit_request",
+      actor: req.player.email || req.player.username,
+      ip: clientIp(req),
+      success: true,
+      meta: { amountCents, method, depositId: row.rows[0]?.id },
+    });
     res.json({ ok: true, deposit: row.rows[0] });
   });
 
@@ -702,6 +844,14 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
                  status, created_at AS "createdAt"`,
       [req.player.id, amountCents, method, destination, gameKey]
     );
+    auditLog({
+      category: "wallet",
+      action: "withdraw_request",
+      actor: req.player.email || req.player.username,
+      ip: clientIp(req),
+      success: true,
+      meta: { amountCents, method, withdrawalId: row.rows[0]?.id },
+    });
     res.json({ ok: true, withdrawal: row.rows[0] });
   });
 
@@ -751,10 +901,20 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
            VALUES ($1,$2,'deposit_approved',$3::jsonb)`,
           [dep.player_id, Math.floor(dep.amount_cents / 100), JSON.stringify({ depositId: dep.id })]
         );
-        return { ok: true };
+        return { ok: true, amountCents: dep.amount_cents, playerId: dep.player_id };
       });
       if (result.error) return res.status(result.status).json({ error: result.error });
-      res.json(result);
+      auditLog({
+        category: "wallet",
+        action: "deposit_approve",
+        actor: req.adminUser?.username,
+        actorRole: req.adminUser?.role,
+        target: String(req.params.id),
+        ip: clientIp(req),
+        success: true,
+        meta: { amountCents: result.amountCents, playerId: result.playerId },
+      });
+      res.json({ ok: true });
     } catch (err) {
       console.error("approve deposit:", err.message || err);
       res.status(500).json({ error: "Could not approve deposit" });
@@ -771,6 +931,15 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       dep.id,
       note,
     ]);
+    auditLog({
+      category: "wallet",
+      action: "deposit_reject",
+      actor: req.adminUser?.username,
+      actorRole: req.adminUser?.role,
+      target: String(req.params.id),
+      ip: clientIp(req),
+      success: true,
+    });
     res.json({ ok: true });
   });
 
@@ -810,10 +979,20 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
           `UPDATE withdrawals SET status='approved', admin_note=$2, updated_at=now() WHERE id=$1`,
           [w.id, note]
         );
-        return { ok: true };
+        return { ok: true, amountCents: w.amount_cents, playerId: w.player_id };
       });
       if (result.error) return res.status(result.status).json({ error: result.error });
-      res.json(result);
+      auditLog({
+        category: "wallet",
+        action: "withdraw_approve",
+        actor: req.adminUser?.username,
+        actorRole: req.adminUser?.role,
+        target: String(req.params.id),
+        ip: clientIp(req),
+        success: true,
+        meta: { amountCents: result.amountCents, playerId: result.playerId },
+      });
+      res.json({ ok: true });
     } catch (err) {
       console.error("approve withdrawal:", err.message || err);
       res.status(500).json({ error: "Could not approve withdrawal" });
@@ -830,6 +1009,15 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       w.id,
       note,
     ]);
+    auditLog({
+      category: "wallet",
+      action: "withdraw_reject",
+      actor: req.adminUser?.username,
+      actorRole: req.adminUser?.role,
+      target: String(req.params.id),
+      ip: clientIp(req),
+      success: true,
+    });
     res.json({ ok: true });
   });
 
@@ -849,9 +1037,8 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       const id = String(req.params.id || "").trim();
       const password = String(req.body?.password || "").trim();
       if (!id) return res.status(400).json({ error: "Player id required" });
-      if (password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
+      const pwCheck = await validatePlayerPassword(password);
+      if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error });
       const found = await query(`SELECT id, username, email FROM players WHERE id = $1`, [id]);
       const player = found.rows[0];
       if (!player) return res.status(404).json({ error: "Player not found" });
@@ -863,6 +1050,16 @@ function mountPlayerApi(app, { auth, requireAdmin }) {
       ]);
       // Force re-login on other devices after admin reset.
       await query(`DELETE FROM player_sessions WHERE player_id = $1`, [player.id]);
+
+      auditLog({
+        category: "admin",
+        action: "set_player_password",
+        actor: req.adminUser?.username,
+        actorRole: req.adminUser?.role,
+        target: player.email || player.username,
+        ip: clientIp(req),
+        success: true,
+      });
 
       res.json({
         ok: true,

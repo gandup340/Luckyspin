@@ -1,8 +1,6 @@
 (() => {
-  const TOKEN_KEY = "lucky_vips_admin_token";
   const USER_KEY = "lucky_vips_admin_user";
   const IS_SUPPORT_PORTAL = location.pathname.startsWith("/support");
-  let token = localStorage.getItem(TOKEN_KEY) || "";
   let currentUser = null;
   try {
     currentUser = JSON.parse(localStorage.getItem(USER_KEY) || "null");
@@ -15,6 +13,7 @@
   let activeId = null;
   let activeMessages = [];
   let ws;
+  let loggedIn = false;
 
   const loginView = document.getElementById("login-view");
   const appView = document.getElementById("app-view");
@@ -47,8 +46,7 @@
 
   async function api(url, options = {}) {
     const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(url, { ...options, headers });
+    const res = await fetch(url, { ...options, headers, credentials: "include" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
@@ -175,9 +173,8 @@
           password: document.getElementById("login-password").value,
         }),
       });
-      token = data.token;
       currentUser = data.user;
-      localStorage.setItem(TOKEN_KEY, token);
+      loggedIn = true;
       localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
       await bootAdmin();
     } catch (err) {
@@ -188,13 +185,12 @@
 
   logoutBtn.addEventListener("click", async () => {
     try {
-      if (token) await api("/api/admin/logout", { method: "POST", body: "{}" });
+      if (loggedIn) await api("/api/admin/logout", { method: "POST", body: "{}" });
     } catch {
       /* ignore */
     }
-    token = "";
+    loggedIn = false;
     currentUser = null;
-    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     ws?.close();
     setMenuOpen(false);
@@ -706,7 +702,7 @@
             <td data-label="Balance">${money(p.balanceCents)}</td>
             <td data-label="Points">${esc(p.points)}</td>
             <td data-label="New password">
-              <input type="password" data-field="player-password" placeholder="Min 6 chars" minlength="6" autocomplete="new-password" />
+              <input type="password" data-field="player-password" placeholder="Min 10 chars" minlength="10" autocomplete="new-password" />
             </td>
             <td data-label="Actions" class="user-actions">
               <button type="button" class="btn-mini" data-set-player-pass="${esc(p.id)}">Set password</button>
@@ -720,8 +716,8 @@
           const row = btn.closest("tr");
           const input = row?.querySelector('[data-field="player-password"]');
           const password = String(input?.value || "").trim();
-          if (password.length < 6) {
-            setStatus("players-status", "Password must be at least 6 characters", true);
+          if (password.length < 10) {
+            setStatus("players-status", "Password must be at least 10 characters", true);
             return;
           }
           btn.disabled = true;
@@ -1160,7 +1156,7 @@
     body.append("file", file);
     const res = await fetch("/api/chat/upload", {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "include",
       body,
     });
     const data = await res.json().catch(() => ({}));
@@ -1275,7 +1271,7 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.addEventListener("open", () => {
-      ws.send(JSON.stringify({ type: "join_admin", token }));
+      ws.send(JSON.stringify({ type: "join_admin" }));
     });
     ws.addEventListener("message", async (event) => {
       const msg = JSON.parse(event.data);
@@ -1310,7 +1306,7 @@
     });
     ws.addEventListener("close", () => {
       setTimeout(() => {
-        if (token) connectWs();
+        if (loggedIn) connectWs();
       }, 2000);
     });
   }
@@ -1664,12 +1660,12 @@
 
   applySupportPortalLogin();
 
-  // Auto login if token exists
-  if (token) {
+  // Auto login if session cookie exists
+  if (currentUser) {
+    loggedIn = true;
     bootAdmin().catch(() => {
-      token = "";
+      loggedIn = false;
       currentUser = null;
-      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
       showApp(false);
     });

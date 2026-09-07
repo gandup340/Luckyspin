@@ -1,5 +1,4 @@
 (() => {
-  const TOKEN_KEY = "lucky_player_token";
   const PLAYER_KEY = "lucky_player_cache";
   const CHAT_KEY = "lucky_chat_session_v1";
   const MOBILE_MQ = window.matchMedia("(max-width: 900px)");
@@ -39,7 +38,8 @@
   let conversationId = null;
   let profile = null;
   let player = null;
-  let token = localStorage.getItem(TOKEN_KEY) || "";
+  let sessionOk = false;
+  let chatToken = "";
   let pendingEmail = "";
   let messages = [];
   let unread = 0;
@@ -74,17 +74,10 @@
     }
   }
 
-  function cachePlayer(nextPlayer, nextToken) {
+  function cachePlayer(nextPlayer) {
     player = nextPlayer || null;
-    if (nextToken) {
-      token = nextToken;
-      try {
-        localStorage.setItem(TOKEN_KEY, nextToken);
-      } catch {
-        /* private mode / quota */
-      }
-    }
-    if (player) saveJson(PLAYER_KEY, player);
+    sessionOk = Boolean(player?.email);
+    if (player) saveJson(PLAYER_KEY);
     else {
       try {
         localStorage.removeItem(PLAYER_KEY);
@@ -95,10 +88,9 @@
   }
 
   function clearAuth() {
-    token = "";
+    sessionOk = false;
     player = null;
     try {
-      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(PLAYER_KEY);
     } catch {
       /* ignore */
@@ -108,11 +100,14 @@
   function loadChatSession() {
     const data = loadJson(CHAT_KEY);
     if (!data?.conversationId || !data?.name || !data?.phone || !data?.email) return null;
+    if (data.chatToken) chatToken = String(data.chatToken);
     return data;
   }
 
   function saveChatSession(next) {
-    saveJson(CHAT_KEY, next);
+    const payload = { ...next };
+    if (chatToken) payload.chatToken = chatToken;
+    saveJson(CHAT_KEY, payload);
   }
 
   function setStatus(text) {
@@ -310,7 +305,7 @@
   }
 
   function startChatWithPlayer(p) {
-    cachePlayer(p, token);
+    cachePlayer(p);
     profile = profileFromPlayer(p);
     enterSite();
     if (!profile.email) {
@@ -339,14 +334,11 @@
     const res = await fetch(path, {
       method: "POST",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     });
     const data = await res.json().catch(() => ({}));
-    if (data?.token) cachePlayer(data.player || player, data.token);
+    if (data?.player) cachePlayer(data.player);
     return { res, data };
   }
 
@@ -354,10 +346,14 @@
     const body = new FormData();
     body.append("file", file);
     if (conversationId) body.append("conversationId", conversationId);
+    if (chatToken) body.append("chatToken", chatToken);
     const res = await fetch("/api/chat/upload", {
       method: "POST",
       credentials: "include",
-      headers: conversationId ? { "X-Conversation-Id": conversationId } : {},
+      headers: {
+        ...(conversationId ? { "X-Conversation-Id": conversationId } : {}),
+        ...(chatToken ? { "X-Chat-Token": chatToken } : {}),
+      },
       body,
     });
     const data = await res.json().catch(() => ({}));
@@ -417,6 +413,7 @@
       phone: details.phone,
       email: details.email,
       conversationId: details.conversationId || undefined,
+      chatToken: chatToken || details.chatToken || "",
     });
   }
 
@@ -450,8 +447,10 @@
       if (msg.type === "joined" && msg.role === "customer") {
         joining = false;
         conversationId = msg.conversationId;
+        if (msg.chatToken) chatToken = String(msg.chatToken);
         profile = {
           conversationId,
+          chatToken,
           name: msg.profile?.name || profile?.name || "",
           phone: msg.profile?.phone || profile?.phone || "",
           email: msg.profile?.email || profile?.email || "",
@@ -502,23 +501,20 @@
   async function restorePlayerSession() {
     const cached = loadJson(PLAYER_KEY);
     if (cached) player = cached;
-    token = localStorage.getItem(TOKEN_KEY) || token || "";
-    const hasCachedSession = Boolean((token || player?.email) && player?.email);
+    const hasCachedSession = Boolean(player?.email);
     try {
-      const res = await fetch("/api/player/me", {
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch("/api/player/me", { credentials: "include" });
       if (res.status === 401) {
         clearAuth();
         return false;
       }
       if (!res.ok) {
-        // Keep local session on temporary server/network errors.
+        // Soft-keep profile display on temporary errors; cookie may still be valid.
+        sessionOk = hasCachedSession;
         return hasCachedSession;
       }
       const data = await res.json();
-      cachePlayer(data.player, data.token || token);
+      cachePlayer(data.player);
       return Boolean(player?.email);
     } catch {
       return hasCachedSession;
@@ -526,14 +522,14 @@
   }
 
   function openPlayerChat() {
-    if (!(player?.email && token)) {
+    if (!(player?.email && sessionOk)) {
       showWelcome("signin");
       return;
     }
     startChatWithPlayer(player);
   }
 
-  function showVerify(email, hint, devCode) {
+  function showVerify(email) {
     pendingEmail = email;
     const hintEl = document.getElementById("chat-verify-hint");
     const codeBox = document.getElementById("chat-verify-code-box");
@@ -609,11 +605,11 @@
         code,
         password,
       });
-      if (!res.ok || !data.token) {
+      if (!res.ok || !data.ok || !data.player) {
         setError(errEl, data.error || "Could not reset password");
         return;
       }
-      cachePlayer(data.player, data.token);
+      cachePlayer(data.player);
       startChatWithPlayer(data.player);
     });
   });
@@ -632,11 +628,11 @@
         showVerify(data.email || email, data.error, data.devCode);
         return;
       }
-      if (!res.ok || !data.token) {
+      if (!res.ok || !data.ok || !data.player) {
         setError(errEl, data.error || "Sign in failed");
         return;
       }
-      cachePlayer(data.player, data.token);
+      cachePlayer(data.player);
       startChatWithPlayer(data.player);
     });
   });
@@ -675,11 +671,11 @@
         email: pendingEmail,
         code,
       });
-      if (!res.ok || !data.token) {
+      if (!res.ok || !data.ok || !data.player) {
         setError(errEl, data.error || "Verification failed");
         return;
       }
-      cachePlayer(data.player, data.token);
+      cachePlayer(data.player);
       startChatWithPlayer(data.player);
     });
   });
@@ -811,7 +807,7 @@
   window.luckyUpdatePlayer = (next) => {
     if (!next) return;
     player = next;
-    cachePlayer(next, token);
+    cachePlayer(next);
     if (player?.email) profile = profileFromPlayer(player);
   };
 })();

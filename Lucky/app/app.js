@@ -1,7 +1,6 @@
 (() => {
-  const TOKEN_KEY = "lucky_player_token";
-  const PLAYER_KEY = "lucky_player_cache";
-  let token = localStorage.getItem(TOKEN_KEY) || "";
+    const PLAYER_KEY = "lucky_player_cache";
+  let sessionOk = false;
   let player = null;
   let mode = "login";
   let pendingEmail = "";
@@ -13,8 +12,7 @@
 
   async function api(path, opts = {}) {
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(path, { ...opts, headers });
+    const res = await fetch(path, { credentials: "include", ...opts, headers });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const err = new Error(data.error || "Request failed");
@@ -42,11 +40,9 @@
     el.textContent = msg || "";
   }
 
-  function cacheSession(nextToken, nextPlayer) {
-    token = nextToken || "";
+  function cacheSession(_ignoredToken, nextPlayer) {
     player = nextPlayer || null;
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    sessionOk = Boolean(player?.email);
     if (player) localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
     else localStorage.removeItem(PLAYER_KEY);
   }
@@ -58,7 +54,7 @@
     document.getElementById("auth-title").textContent = "Verify email";
     const hintEl = document.getElementById("verify-hint");
     if (hintEl) {
-      hintEl.textContent = hint || `Enter the 6-digit code sent to ${email}.`;
+      hintEl.textContent = hint || `Enter the verification code sent to ${email}.`;
       if (devCode) hintEl.textContent += ` Dev code: ${devCode}`;
     }
   }
@@ -94,7 +90,7 @@
   async function refreshMe() {
     const data = await api("/api/player/me");
     player = data.player;
-    cacheSession(token, player);
+    cacheSession(null, player);
     renderPlayer();
   }
 
@@ -171,7 +167,7 @@
         return;
       }
       if (!res.ok) throw new Error(data.error || "Request failed");
-      cacheSession(data.token, data.player);
+      cacheSession(null, data.player);
       await enterApp();
     } catch (err) {
       showAuthError(err.message);
@@ -189,7 +185,7 @@
           code: document.getElementById("auth-code").value.trim(),
         }),
       });
-      cacheSession(data.token, data.player);
+      cacheSession(null, data.player);
       await enterApp();
     } catch (err) {
       showVerifyError(err.message);
@@ -312,10 +308,18 @@
     }
   });
 
-  if (token) {
+  try {
+    player = JSON.parse(localStorage.getItem(PLAYER_KEY) || "null");
+    sessionOk = Boolean(player?.email);
+  } catch {
+    player = null;
+    sessionOk = false;
+  }
+  if (sessionOk) {
     enterApp().catch(() => {
-      token = "";
-      localStorage.removeItem(TOKEN_KEY);
+      sessionOk = false;
+      player = null;
+      localStorage.removeItem(PLAYER_KEY);
     });
   }
 })();

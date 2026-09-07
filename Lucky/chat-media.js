@@ -461,7 +461,7 @@
   async function loadIceServers() {
     if (cachedIce) return cachedIce;
     if (!iceFetchPromise) {
-      iceFetchPromise = fetch("/api/webrtc/ice")
+      iceFetchPromise = fetch("/api/webrtc/ice", { credentials: "include" })
         .then((res) => (res.ok ? res.json() : { iceServers: DEFAULT_ICE }))
         .then((data) => {
           cachedIce = Array.isArray(data?.iceServers) && data.iceServers.length ? data.iceServers : DEFAULT_ICE;

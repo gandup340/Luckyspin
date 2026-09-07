@@ -1,6 +1,5 @@
 (() => {
-  const TOKEN_KEY = "lucky_player_token";
-  const PLAYER_KEY = "lucky_player_cache";
+    const PLAYER_KEY = "lucky_player_cache";
   const CHAT_KEY = "lucky_chat_session_v1";
 
   const shell = document.getElementById("player-shell");
@@ -109,18 +108,9 @@
   }
 
   async function api(path, opts = {}) {
-    const token = localStorage.getItem(TOKEN_KEY) || "";
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(path, { credentials: "include", ...opts, headers });
     const data = await res.json().catch(() => ({}));
-    if (data?.token) {
-      try {
-        localStorage.setItem(TOKEN_KEY, data.token);
-      } catch {
-        /* ignore */
-      }
-    }
     return { res, data };
   }
 
@@ -131,7 +121,6 @@
       /* ignore */
     }
     try {
-      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(PLAYER_KEY);
       // Keep chat session id so the same device can reopen the same server thread.
     } catch {

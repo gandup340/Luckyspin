@@ -15,6 +15,7 @@ const { mountPlayerApi } = require("./player-api");
 const { mountJuwaApi } = require("./juwa-api");
 const { dbEnabled, query } = require("./db");
 const { emailConfigured, smtpSettings } = require("./mail");
+const { auditLog, clientIp: auditClientIp, listAudits } = require("./audit-log");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const PORT = Number(process.env.PORT) || 3000;
@@ -120,6 +121,11 @@ const FACEBOOK_VERIFY_TOKEN = String(
   process.env.FACEBOOK_VERIFY_TOKEN || "luckyvipspins2026"
 ).trim();
 const FACEBOOK_APP_SECRET = String(process.env.FACEBOOK_APP_SECRET || "").trim();
+const ADMIN_COOKIE = "lucky_admin_token";
+const CHAT_SESSION_SECRET =
+  String(process.env.CHAT_SESSION_SECRET || process.env.SESSION_SECRET || "").trim() ||
+  crypto.createHash("sha256").update(`chat:${ROOT}:${process.env.ADMIN_PASSWORD || "dev"}`).digest("hex");
+const UPLOAD_SIGN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const FACEBOOK_GRAPH_VERSION = String(process.env.FACEBOOK_GRAPH_VERSION || "v21.0").trim();
 const FACEBOOK_ENABLED = Boolean(FACEBOOK_PAGE_ACCESS_TOKEN && FACEBOOK_VERIFY_TOKEN);
 const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
@@ -373,12 +379,29 @@ function ensureUsers(cfg) {
     }
   }
 
+  // Migrate / invalidate legacy unsalted SHA256 password hashes.
+  for (const user of cfg.users || []) {
+    if (user?.passwordHash && !isBcryptHash(user.passwordHash)) {
+      user.passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+      user.mustReset = true;
+      dirty = true;
+      console.warn(
+        `[security] Invalidated legacy password hash for user "${user.username}". Reset via admin or ADMIN_SYNC=1.`
+      );
+    }
+  }
+
   // Optional: force-sync primary admin from env (useful on Render redeploys).
   const syncPass = String(process.env.ADMIN_PASSWORD || "").trim();
   const syncUser = String(process.env.ADMIN_USERNAME || "admin")
     .trim()
     .toLowerCase() || "admin";
-  if (syncPass && syncPass.length >= MIN_PASSWORD_LENGTH && String(process.env.ADMIN_SYNC || "").trim() === "1") {
+  const forceRotate = String(process.env.FORCE_ROTATE_PASSWORDS || "").trim() === "1";
+  if (
+    syncPass &&
+    syncPass.length >= MIN_PASSWORD_LENGTH &&
+    (String(process.env.ADMIN_SYNC || "").trim() === "1" || forceRotate)
+  ) {
     let admin = (cfg.users || []).find((u) => u.id === "u_admin") || (cfg.users || []).find((u) => normalizeRole(u.role) === "admin");
     if (!admin) {
       admin = {
@@ -393,7 +416,16 @@ function ensureUsers(cfg) {
     }
     admin.username = syncUser;
     admin.passwordHash = hashPassword(syncPass);
+    delete admin.mustReset;
     dirty = true;
+    if (forceRotate) {
+      for (const user of cfg.users || []) {
+        if (user.id === admin.id) continue;
+        user.passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+        user.mustReset = true;
+      }
+      console.warn("[security] FORCE_ROTATE_PASSWORDS: support passwords invalidated; reset in admin panel.");
+    }
   }
 
   if (dirty) writeJson(CONFIG_PATH, cfg);
@@ -652,8 +684,13 @@ function spinTimestamp(spin) {
   return Number(spin?.claimedAt || spin?.createdAt || 0) || 0;
 }
 
+function isWinningSpin(spin) {
+  return Boolean(spin) && !isNoPrizeLabel(spin.prizeLabel);
+}
+
+/** Cooldown applies to any winning spin (claimed or unclaimed) within the window. */
 function isWithinPrizeCooldown(spin, now = Date.now()) {
-  if (!spin?.claimed || isNoPrizeLabel(spin.prizeLabel)) return false;
+  if (!isWinningSpin(spin)) return false;
   const at = spinTimestamp(spin);
   return at > 0 && now - at < SPIN_COOLDOWN_MS;
 }
@@ -669,9 +706,15 @@ function formatSpinDate(ms) {
   });
 }
 
-/** Recent claimed real prize for phone and/or device (within 7 days). */
-function findClaimedCooldown({ digits = "", deviceId = "" } = {}) {
-  if (!digits && !deviceId) return null;
+function fingerprintIp(ip) {
+  const raw = String(ip || "").trim().toLowerCase();
+  if (!raw || raw === "unknown") return "";
+  return crypto.createHash("sha256").update(`spin-ip:${raw}`).digest("hex").slice(0, 32);
+}
+
+/** Recent winning spin for phone, device, and/or IP fingerprint (within 7 days). */
+function findClaimedCooldown({ digits = "", deviceId = "", ipHash = "" } = {}) {
+  if (!digits && !deviceId && !ipHash) return null;
   const data = getSpins();
   const now = Date.now();
   let match = null;
@@ -681,7 +724,8 @@ function findClaimedCooldown({ digits = "", deviceId = "" } = {}) {
       digits &&
       (phoneDigits(spin.phone) === digits || String(spin.phoneDigits || "") === digits);
     const deviceMatch = deviceId && String(spin.deviceId || "") === deviceId;
-    if (!phoneMatch && !deviceMatch) continue;
+    const ipMatch = ipHash && String(spin.ipHash || "") === ipHash;
+    if (!phoneMatch && !deviceMatch && !ipMatch) continue;
     if (!match || spinTimestamp(spin) > spinTimestamp(match)) match = spin;
   }
   return match;
@@ -691,15 +735,124 @@ function cooldownResponse(spin, reason) {
   const spunAt = spinTimestamp(spin);
   const nextAvailableAt = nextPrizeAvailableAt(spin);
   const by = reason || "phone";
+  const claimed = Boolean(spin?.claimed);
   return {
     used: true,
-    claimed: true,
+    claimed,
     reason: by,
     spunAt,
     nextAvailableAt,
     cooldownDays: 7,
-    error: `Prize already claimed this week (${by}). Next prize after ${formatSpinDate(nextAvailableAt)}.`,
+    error: claimed
+      ? `Prize already claimed this week (${by}). Next prize after ${formatSpinDate(nextAvailableAt)}.`
+      : `A winning spin is already pending this week (${by}). Next prize after ${formatSpinDate(nextAvailableAt)}.`,
   };
+}
+
+function parseCookieHeader(header) {
+  const out = {};
+  String(header || "")
+    .split(";")
+    .forEach((part) => {
+      const idx = part.indexOf("=");
+      if (idx < 0) return;
+      const key = part.slice(0, idx).trim();
+      const val = part.slice(idx + 1).trim();
+      if (!key) return;
+      try {
+        out[key] = decodeURIComponent(val);
+      } catch {
+        out[key] = val;
+      }
+    });
+  return out;
+}
+
+function cookieSecureFlag(req) {
+  if (String(process.env.COOKIE_SECURE || "").trim() === "0") return false;
+  if (String(process.env.COOKIE_SECURE || "").trim() === "1") return true;
+  if (req?.secure) return true;
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim();
+  return proto === "https" || IS_PROD || Boolean(process.env.RENDER);
+}
+
+function setAdminSessionCookie(res, token, req) {
+  const maxAge = 12 * 60 * 60;
+  const parts = [
+    `${ADMIN_COOKIE}=${encodeURIComponent(token)}`,
+    `Max-Age=${maxAge}`,
+    "Path=/",
+    "SameSite=Lax",
+    "HttpOnly",
+  ];
+  if (cookieSecureFlag(req)) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function clearAdminSessionCookie(res, req) {
+  const parts = [`${ADMIN_COOKIE}=`, "Max-Age=0", "Path=/", "SameSite=Lax", "HttpOnly"];
+  if (cookieSecureFlag(req)) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function readAdminToken(req) {
+  const header = req.headers?.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    const bearer = header.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  const cookies = parseCookieHeader(req.headers?.cookie);
+  return String(cookies[ADMIN_COOKIE] || "").trim();
+}
+
+function signChatSession(conversationId, ttlMs = 30 * 24 * 60 * 60 * 1000) {
+  const exp = Date.now() + ttlMs;
+  const payload = Buffer.from(JSON.stringify({ cid: conversationId, exp }), "utf8").toString(
+    "base64url"
+  );
+  const sig = crypto.createHmac("sha256", CHAT_SESSION_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifyChatSession(token, conversationId) {
+  const raw = String(token || "").trim();
+  if (!raw || !raw.includes(".")) return false;
+  const [payload, sig] = raw.split(".");
+  if (!payload || !sig) return false;
+  const expected = crypto.createHmac("sha256", CHAT_SESSION_SECRET).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!data?.cid || Number(data.exp || 0) < Date.now()) return false;
+    if (conversationId && data.cid !== conversationId) return false;
+    return data.cid;
+  } catch {
+    return false;
+  }
+}
+
+function signUploadUrl(filename, ttlMs = UPLOAD_SIGN_TTL_MS) {
+  const exp = Date.now() + ttlMs;
+  const base = `/uploads/chat/${filename}`;
+  const sig = crypto
+    .createHmac("sha256", CHAT_SESSION_SECRET)
+    .update(`${filename}:${exp}`)
+    .digest("base64url");
+  return `${base}?exp=${exp}&sig=${sig}`;
+}
+
+function verifyUploadSignature(filename, exp, sig) {
+  const expNum = Number(exp);
+  if (!filename || !sig || !Number.isFinite(expNum) || expNum < Date.now()) return false;
+  const expected = crypto
+    .createHmac("sha256", CHAT_SESSION_SECRET)
+    .update(`${filename}:${expNum}`)
+    .digest("base64url");
+  const a = Buffer.from(String(sig));
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function upsertCustomer(profile = {}) {
@@ -790,14 +943,74 @@ function countAdmins(users) {
 }
 
 function auth(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const token = readAdminToken(req);
   const session = tokens.get(token);
   if (!token || !session || Date.now() > session.expiresAt) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   req.adminUser = session;
+  req.adminToken = token;
   next();
+}
+
+function optionalStaffOrPlayer(req, res, next) {
+  const adminToken = readAdminToken(req);
+  const adminSession = tokens.get(adminToken);
+  if (adminToken && adminSession && Date.now() <= adminSession.expiresAt) {
+    req.adminUser = adminSession;
+    req.adminToken = adminToken;
+    return next();
+  }
+  // Player cookie/bearer is validated lazily by player routes; here we only mark presence.
+  const cookies = parseCookieHeader(req.headers?.cookie);
+  const playerTok =
+    (String(req.headers?.authorization || "").startsWith("Bearer ")
+      ? req.headers.authorization.slice(7).trim()
+      : "") || String(cookies.lucky_player_token || "").trim();
+  if (playerTok) req.playerTokenHint = playerTok;
+  return next();
+}
+
+async function requireStaffOrPlayerSession(req, res, next) {
+  const adminToken = readAdminToken(req);
+  const adminSession = tokens.get(adminToken);
+  if (adminToken && adminSession && Date.now() <= adminSession.expiresAt) {
+    req.adminUser = adminSession;
+    req.adminToken = adminToken;
+    return next();
+  }
+  if (!dbEnabled()) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  try {
+    const cookies = parseCookieHeader(req.headers?.cookie);
+    const header = req.headers?.authorization || "";
+    const token =
+      (header.startsWith("Bearer ") ? header.slice(7).trim() : "") ||
+      String(cookies.lucky_player_token || "").trim();
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
+    const sess = await query(
+      `SELECT s.token, s.expires_at, p.id
+       FROM player_sessions s
+       JOIN players p ON p.id = s.player_id
+       WHERE s.token = $1`,
+      [token]
+    );
+    const row = sess.rows[0];
+    if (!row || new Date(row.expires_at).getTime() < Date.now()) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    req.playerId = row.id;
+    req.playerToken = token;
+    return next();
+  } catch (err) {
+    console.warn("requireStaffOrPlayerSession:", err?.message || err);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+}
+
+function isStaffWs(s) {
+  return s?.role === "admin" || s?.role === "support";
 }
 
 function requireAdmin(req, res, next) {
@@ -809,17 +1022,26 @@ function requireAdmin(req, res, next) {
 
 function sanitizeAttachment(raw) {
   if (!raw || typeof raw !== "object") return null;
-  const url = String(raw.url || "");
-  if (!url.startsWith("/uploads/chat/")) return null;
-  const filename = path.basename(url);
-  if (!filename || filename !== url.slice("/uploads/chat/".length)) return null;
+  const rawUrl = String(raw.url || "");
+  if (!rawUrl.startsWith("/uploads/chat/")) return null;
+  let pathname = rawUrl;
+  let query = "";
+  const qIdx = rawUrl.indexOf("?");
+  if (qIdx >= 0) {
+    pathname = rawUrl.slice(0, qIdx);
+    query = rawUrl.slice(qIdx + 1);
+  }
+  const filename = path.basename(pathname);
+  if (!filename || filename !== pathname.slice("/uploads/chat/".length)) return null;
   if (!/^[a-zA-Z0-9._-]+$/.test(filename)) return null;
   const fullPath = path.join(UPLOADS_CHAT_DIR, filename);
   if (!fs.existsSync(fullPath)) return null;
+  // Prefer a fresh signed URL so message attachments remain readable.
+  const url = signUploadUrl(filename);
   const kind = ["image", "video", "audio", "file"].includes(raw.kind) ? raw.kind : "file";
   return {
     kind,
-    url: `/uploads/chat/${filename}`,
+    url,
     name: String(raw.name || filename).replace(/[<>"]/g, "").slice(0, 120),
     mime: String(raw.mime || "application/octet-stream").slice(0, 120),
     size: Math.max(0, Number(raw.size) || 0),
@@ -928,7 +1150,7 @@ async function postSupportReply(conversationId, text) {
 
   broadcast(
     { type: "message", conversationId: id, message: entry },
-    (s) => (s.role === "customer" && s.conversationId === id) || s.role === "admin"
+    (s) => (s.role === "customer" && s.conversationId === id) || isStaffWs(s)
   );
 
   sendPushToTargets({
@@ -1114,7 +1336,7 @@ async function ingestFacebookMessagingEvent(event) {
       channel: "facebook",
       name: convo.name,
     },
-    (s) => s.role === "admin"
+    (s) => isStaffWs(s)
   );
 
   // AUTO GAME DEPOSIT DISABLED — no auto add/withdraw from chat (Facebook).
@@ -1188,8 +1410,35 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+const playerAuthIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Try again later." },
+});
+const playerAuthEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 120);
+    return email || String(req.ip || "unknown");
+  },
+  message: { error: "Too many attempts for this email. Try again later." },
+});
 
-mountPlayerApi(app, { auth, requireAdmin });
+mountPlayerApi(app, {
+  auth,
+  requireAdmin,
+  playerAuthIpLimiter,
+  playerAuthEmailLimiter,
+});
 const juwaApi = mountJuwaApi(app, {
   auth,
   requireAdmin,
@@ -1197,6 +1446,12 @@ const juwaApi = mountJuwaApi(app, {
   readJson,
   writeJson,
   postSupportReply,
+});
+
+app.get("/api/admin/audit-log", auth, requireAdmin, (req, res) => {
+  const limit = Number(req.query.limit) || 100;
+  const category = req.query.category ? String(req.query.category) : null;
+  res.json({ entries: listAudits({ limit, category }) });
 });
 
 function recentCustomerJuwaText(convo, limit = 6) {
@@ -1329,7 +1584,7 @@ app.delete("/api/push/subscribe", (req, res) => {
 
 app.use("/api/", apiLimiter);
 
-app.get("/api/webrtc/ice", async (_req, res) => {
+app.get("/api/webrtc/ice", requireStaffOrPlayerSession, async (_req, res) => {
   try {
     res.json({ iceServers: await buildIceServers() });
   } catch (err) {
@@ -1355,12 +1610,13 @@ app.get("/api/spin", (_req, res) => {
 app.get("/api/spin/check", spinLimiter, (req, res) => {
   const digits = phoneDigits(req.query?.phone);
   const deviceId = normalizeDeviceId(req.query?.deviceId || req.query?.mac);
+  const ipHash = fingerprintIp(clientIp(req));
   const hasPhone = digits.length >= 7;
 
   if (req.query?.phone && !hasPhone) {
     return res.status(400).json({ error: "Please enter a valid phone number.", used: false });
   }
-  if (!hasPhone && !deviceId) {
+  if (!hasPhone && !deviceId && !ipHash) {
     return res.json({ used: false, cooldownDays: 7 });
   }
 
@@ -1369,6 +1625,9 @@ app.get("/api/spin/check", spinLimiter, (req, res) => {
 
   const deviceHit = deviceId ? findClaimedCooldown({ deviceId }) : null;
   if (deviceHit) return res.json(cooldownResponse(deviceHit, "device"));
+
+  const ipHit = ipHash ? findClaimedCooldown({ ipHash }) : null;
+  if (ipHit) return res.json(cooldownResponse(ipHit, "network"));
 
   res.json({ used: false, cooldownDays: 7 });
 });
@@ -1384,9 +1643,14 @@ app.post("/api/spin/play", spinLimiter, (req, res) => {
     return res.status(400).json({ error: "Missing device id. Refresh and try again." });
   }
 
+  const ipHash = fingerprintIp(clientIp(req));
   const deviceHit = findClaimedCooldown({ deviceId });
   if (deviceHit) {
     return res.status(409).json(cooldownResponse(deviceHit, "device"));
+  }
+  const ipHit = ipHash ? findClaimedCooldown({ ipHash }) : null;
+  if (ipHit) {
+    return res.status(409).json(cooldownResponse(ipHit, "network"));
   }
 
   const now = Date.now();
@@ -1403,6 +1667,7 @@ app.post("/api/spin/play", spinLimiter, (req, res) => {
     phone: "",
     phoneDigits: "",
     deviceId,
+    ipHash,
     email: "",
   };
 
@@ -1485,14 +1750,39 @@ app.post("/api/spin/claim", spinLimiter, (req, res) => {
 
 app.post("/api/admin/login", loginLimiter, (req, res) => {
   const cfg = getConfig();
-  if (!cfg) return res.status(401).json({ error: "Wrong username or password" });
+  const ip = auditClientIp(req) || clientIp(req);
+  if (!cfg) {
+    auditLog({ category: "auth", action: "admin_login", ip, success: false, message: "config missing" });
+    return res.status(401).json({ error: "Wrong username or password" });
+  }
 
   const username = String(req.body?.username || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const user = (cfg.users || []).find((u) => u.username.toLowerCase() === username);
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
+    auditLog({
+      category: "auth",
+      action: "admin_login",
+      actor: username || null,
+      ip,
+      success: false,
+      message: "invalid credentials",
+    });
     return res.status(401).json({ error: "Wrong username or password" });
+  }
+  if (user.mustReset) {
+    auditLog({
+      category: "auth",
+      action: "admin_login",
+      actor: username,
+      ip,
+      success: false,
+      message: "password must be reset",
+    });
+    return res.status(403).json({
+      error: "Password was rotated for security. Ask an admin to set a new password.",
+    });
   }
 
   let dirty = stripLegacySecrets(cfg);
@@ -1511,16 +1801,33 @@ app.post("/api/admin/login", loginLimiter, (req, res) => {
     name: user.name,
     role,
   });
+  setAdminSessionCookie(res, token, req);
+  auditLog({
+    category: "auth",
+    action: "admin_login",
+    actor: user.username,
+    actorRole: role,
+    ip,
+    success: true,
+  });
   res.json({
-    token,
+    ok: true,
     user: { id: user.id, username: user.username, name: user.name, role },
   });
 });
 
 app.post("/api/admin/logout", auth, (req, res) => {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const token = req.adminToken || readAdminToken(req);
   if (token) tokens.delete(token);
+  clearAdminSessionCookie(res, req);
+  auditLog({
+    category: "auth",
+    action: "admin_logout",
+    actor: req.adminUser?.username,
+    actorRole: req.adminUser?.role,
+    ip: auditClientIp(req),
+    success: true,
+  });
   res.json({ ok: true });
 });
 
@@ -1881,10 +2188,9 @@ app.delete("/api/admin/payments/:id", auth, requireAdmin, (req, res) => {
 });
 
 app.post("/api/chat/upload", uploadLimiter, (req, res) => {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const session = tokens.get(token);
-  const isStaff = !!(session && Date.now() <= session.expiresAt);
+  const adminToken = readAdminToken(req);
+  const adminSession = tokens.get(adminToken);
+  const isStaff = !!(adminToken && adminSession && Date.now() <= adminSession.expiresAt);
 
   chatUpload.single("file")(req, res, (err) => {
     if (err) {
@@ -1906,7 +2212,10 @@ app.post("/api/chat/upload", uploadLimiter, (req, res) => {
       const conversationId = String(
         req.body?.conversationId || req.headers["x-conversation-id"] || ""
       );
-      if (!isValidUuid(conversationId)) {
+      const chatToken = String(
+        req.body?.chatToken || req.headers["x-chat-token"] || ""
+      ).trim();
+      if (!isValidUuid(conversationId) || !verifyChatSession(chatToken, conversationId)) {
         cleanup();
         return res.status(401).json({ error: "Start chat before uploading files." });
       }
@@ -1924,10 +2233,11 @@ app.post("/api/chat/upload", uploadLimiter, (req, res) => {
       return res.status(400).json({ error: "File type not allowed" });
     }
 
+    const signedUrl = signUploadUrl(req.file.filename);
     res.json({
       attachment: {
         kind: meta.kind,
-        url: `/uploads/chat/${req.file.filename}`,
+        url: signedUrl,
         name: String(req.file.originalname || "file").slice(0, 120),
         mime: req.file.mimetype,
         size: req.file.size,
@@ -2015,7 +2325,17 @@ app.use("/uploads/chat", (req, res, next) => {
   if (!filename || filename.includes("..") || !fs.existsSync(fullPath)) {
     return res.status(404).type("text/plain").send("Not found");
   }
-  next();
+
+  const adminToken = readAdminToken(req);
+  const adminSession = tokens.get(adminToken);
+  const isStaff = !!(adminToken && adminSession && Date.now() <= adminSession.expiresAt);
+  if (isStaff) return next();
+
+  const exp = req.query?.exp;
+  const sig = req.query?.sig;
+  if (verifyUploadSignature(filename, exp, sig)) return next();
+
+  return res.status(401).type("text/plain").send("Unauthorized");
 });
 app.use(
   "/uploads/chat",
@@ -2088,6 +2408,8 @@ wss.on("connection", (ws, req) => {
   sockets.add(ws);
   ws.role = null;
   ws.conversationId = null;
+  ws.chatToken = null;
+  ws.upgradeCookies = parseCookieHeader(req.headers?.cookie);
 
   ws.on("message", async (raw) => {
     if (String(raw).length > 20000) return;
@@ -2105,6 +2427,7 @@ wss.on("connection", (ws, req) => {
       const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       const phoneDigitsValue = phone.replace(/\D/g, "");
       const phoneOk = phoneDigitsValue.length >= 7;
+      const chatToken = String(msg.chatToken || "").trim();
 
       if (!name || !phoneOk || !emailOk) {
         ws.send(
@@ -2126,37 +2449,43 @@ wss.on("connection", (ws, req) => {
         }
         existing = getChats().conversations.find((c) => c.id === id) || null;
         if (existing) {
-          const samePhone =
-            String(existing.phone || "").replace(/\D/g, "") === phoneDigitsValue;
-          const sameEmail = normalizeEmail(existing.email) === email;
-          // Allow resume if either contact field still matches (profile edits happen).
-          if (!samePhone && !sameEmail) {
+          if (!verifyChatSession(chatToken, id)) {
             existing = null;
             id = "";
+          } else {
+            const samePhone =
+              String(existing.phone || "").replace(/\D/g, "") === phoneDigitsValue;
+            const sameEmail = normalizeEmail(existing.email) === email;
+            // Resume requires signed chat token AND both contact fields.
+            if (!samePhone || !sameEmail) {
+              existing = null;
+              id = "";
+            }
           }
         } else {
           id = "";
         }
       }
 
-      // Restore prior on-site thread for this player (email/phone) so history survives login.
+      // Do not auto-attach by email/phone alone — prevents chat hijacking.
       if (!existing) {
-        existing = findConversationByContact({ email, phone }, getChats().conversations);
-        if (existing) id = existing.id;
-        else id = crypto.randomUUID();
+        id = crypto.randomUUID();
       }
 
       const customer = upsertCustomer({ name, phone, email });
       const { data, convo } = ensureConversation(id, { name, phone, email });
       if (customer) convo.customerId = customer.id;
       saveChats(data);
+      const issuedToken = signChatSession(id);
       ws.role = "customer";
       ws.conversationId = id;
+      ws.chatToken = issuedToken;
       ws.send(
         JSON.stringify({
           type: "joined",
           role: "customer",
           conversationId: id,
+          chatToken: issuedToken,
           profile: { name: convo.name, phone: convo.phone, email: convo.email },
           messages: Array.isArray(convo.messages) ? convo.messages.slice(-MAX_CHAT_MESSAGES) : [],
         })
@@ -2170,19 +2499,23 @@ wss.on("connection", (ws, req) => {
           phone: convo.phone,
           email: convo.email,
         },
-        (s) => s.role === "admin"
+        (s) => isStaffWs(s) || s.role === "support"
       );
       return;
     }
 
     if (msg.type === "join_admin") {
-      const session = tokens.get(msg.token);
-      if (!msg.token || !session || Date.now() > session.expiresAt) {
+      const cookieTok = String(ws.upgradeCookies?.[ADMIN_COOKIE] || "").trim();
+      const token = String(msg.token || cookieTok || "").trim();
+      const session = tokens.get(token);
+      if (!token || !session || Date.now() > session.expiresAt) {
         ws.send(JSON.stringify({ type: "error", error: "Unauthorized" }));
         return;
       }
-      ws.role = "admin";
-      ws.send(JSON.stringify({ type: "joined", role: "admin" }));
+      const role = normalizeRole(session.role);
+      ws.role = role === "support" ? "support" : "admin";
+      ws.adminUser = session;
+      ws.send(JSON.stringify({ type: "joined", role: ws.role }));
       return;
     }
 
@@ -2221,15 +2554,14 @@ wss.on("connection", (ws, req) => {
         broadcast(
           { type: "message", conversationId, message: entry },
           (s) =>
-            (s.role === "customer" && s.conversationId === conversationId) ||
-            s.role === "admin"
+            (s.role === "customer" && s.conversationId === conversationId) || isStaffWs(s)
         );
         // AUTO GAME DEPOSIT DISABLED — no auto add/withdraw from player chat.
         // triggerJuwaFromCustomerMessage(convo, entry);
         return;
       }
 
-      if (ws.role === "admin") {
+      if (isStaffWs(ws)) {
         const conversationId = msg.conversationId;
         if (!conversationId) return;
         const data = getChats();
@@ -2282,8 +2614,7 @@ wss.on("connection", (ws, req) => {
         broadcast(
           { type: "message", conversationId, message: entry },
           (s) =>
-            (s.role === "customer" && s.conversationId === conversationId) ||
-            s.role === "admin"
+            (s.role === "customer" && s.conversationId === conversationId) || isStaffWs(s)
         );
 
         // Alert player devices (phone + laptop) when support replies.
@@ -2321,7 +2652,7 @@ wss.on("connection", (ws, req) => {
 
       if (msg.type === "call_invite") {
         if (ws.role === "customer" && ws.conversationId !== conversationId) return;
-        if (ws.role === "admin" && !msg.conversationId) return;
+        if (wisStaffWs(s) && !msg.conversationId) return;
         const payload = {
           type: "call_invite",
           conversationId,
@@ -2329,7 +2660,7 @@ wss.on("connection", (ws, req) => {
           name: ws.role === "customer" ? msg.name || "Player" : "Support",
         };
         if (ws.role === "customer") {
-          broadcast(payload, (s) => s.role === "admin");
+          broadcast(payload, (s) => isStaffWs(s));
         } else {
           broadcast(
             payload,
@@ -2341,19 +2672,18 @@ wss.on("connection", (ws, req) => {
 
       if (msg.type === "call_accept") {
         const call = activeCalls.get(conversationId) || {};
-        if (ws.role === "admin") call.adminWs = ws;
+        if (isStaffWs(ws)) call.adminWs = ws;
         if (ws.role === "customer") call.customerWs = ws;
         // Ensure both sides are known from current sockets
         for (const s of sockets) {
           if (s.role === "customer" && s.conversationId === conversationId) call.customerWs = s;
-          if (s.role === "admin" && s === ws) call.adminWs = s;
+          if (isStaffWs(s) && s === ws) call.adminWs = s;
         }
         activeCalls.set(conversationId, call);
         broadcast(
           { type: "call_accept", conversationId, from: ws.role },
           (s) =>
-            (s.role === "customer" && s.conversationId === conversationId) ||
-            s.role === "admin"
+            (s.role === "customer" && s.conversationId === conversationId) || isStaffWs(s)
         );
         return;
       }
@@ -2363,15 +2693,14 @@ wss.on("connection", (ws, req) => {
         broadcast(
           { type: msg.type, conversationId, from: ws.role },
           (s) =>
-            (s.role === "customer" && s.conversationId === conversationId) ||
-            s.role === "admin"
+            (s.role === "customer" && s.conversationId === conversationId) || isStaffWs(s)
         );
         return;
       }
 
       if (msg.type === "webrtc_signal") {
         const call = activeCalls.get(conversationId) || {};
-        const targetRole = ws.role === "admin" ? "customer" : "admin";
+        const targetRole = isStaffWs(ws) ? "customer" : "admin";
         broadcast(
           {
             type: "webrtc_signal",
@@ -2383,11 +2712,11 @@ wss.on("connection", (ws, req) => {
             if (targetRole === "customer") {
               return s.role === "customer" && s.conversationId === conversationId;
             }
-            return s.role === "admin";
+            return isStaffWs(s);
           }
         );
         // Keep peer refs warm
-        if (ws.role === "admin") call.adminWs = ws;
+        if (isStaffWs(ws)) call.adminWs = ws;
         if (ws.role === "customer") call.customerWs = ws;
         activeCalls.set(conversationId, call);
       }
@@ -2398,13 +2727,13 @@ wss.on("connection", (ws, req) => {
     if (ws.role === "customer" && ws.conversationId) {
       broadcast(
         { type: "presence", conversationId: ws.conversationId, online: false },
-        (s) => s.role === "admin"
+        (s) => isStaffWs(s)
       );
       if (activeCalls.has(ws.conversationId)) {
         activeCalls.delete(ws.conversationId);
         broadcast(
           { type: "call_end", conversationId: ws.conversationId, from: "customer" },
-          (s) => s.role === "admin"
+          (s) => isStaffWs(s)
         );
       }
     }

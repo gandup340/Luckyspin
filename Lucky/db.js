@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const fs = require("fs");
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 
@@ -8,6 +9,20 @@ function dbEnabled() {
   return Boolean(DATABASE_URL);
 }
 
+function buildSslConfig() {
+  // Neon and most managed Postgres require TLS. Prefer verifying the CA.
+  // Set DATABASE_SSL_REJECT_UNAUTHORIZED=0 only as a temporary escape hatch.
+  const rejectUnauthorized =
+    String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || "1").trim() !== "0";
+  const caPath = String(process.env.DATABASE_SSL_CA || "").trim();
+  const ssl = { rejectUnauthorized };
+  if (caPath && fs.existsSync(caPath)) {
+    ssl.ca = fs.readFileSync(caPath, "utf8");
+  }
+  // Neon connection strings usually include sslmode=require; Node pg still needs ssl object.
+  return ssl;
+}
+
 function getPool() {
   if (!DATABASE_URL) {
     throw new Error("DATABASE_URL is not configured");
@@ -15,7 +30,7 @@ function getPool() {
   if (!pool) {
     pool = new Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: buildSslConfig(),
       max: 8,
     });
   }

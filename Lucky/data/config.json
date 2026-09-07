@@ -299,24 +299,27 @@
       "id": "u_admin",
       "username": "admin",
       "name": "Admin",
-      "passwordHash": "$2b$12$ZTteCn5/213nXx8LUX8ySe4A1VWS4QZKhsR52xGIjNwpeh/puoY7K",
+      "passwordHash": "$2b$12$5EsPTN.U7P8crVKuMfuCNu5bGUhR6Zj0Tou02Ag8xKqQ0.P06Hwuu",
       "role": "admin",
+      "mustReset": true,
       "createdAt": 1784950042727
     },
     {
       "id": "aae03b0c-e798-457c-9a49-806a4e10beb8",
       "username": "pandey",
-      "name": "pandey gandu",
-      "passwordHash": "$2b$12$O7wQFB4Gt/rowcAI1fZY4.z7yErwgUdLQn4.BaCBHv/HSdHum8TZK",
+      "name": "pandey",
+      "passwordHash": "$2b$12$vAY454v4BNX/JpS9PfUfCONRcG1StI2ZNbF5C7kSMUYmuLnJs0LWO",
       "role": "support",
+      "mustReset": true,
       "createdAt": 1784957134908
     },
     {
       "id": "f676be3d-dac6-474f-a54a-a882a0bc3de5",
       "username": "sup1682",
       "name": "Support Agent",
-      "passwordHash": "384d558c68e21ba57b1c279a93134a2fd77b1288bd2ba8cba079823a7ff4f490",
+      "passwordHash": "$2b$12$L9rgJVmH2Ii5gh7.vElybux/RgYE6FWh6NXHgencCD.VYD3TZIe5a",
       "role": "support",
+      "mustReset": true,
       "createdAt": 1784957235931
     }
   ],

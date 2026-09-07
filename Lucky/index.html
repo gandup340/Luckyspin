@@ -57,7 +57,7 @@
             </label>
             <label>
               Password
-              <input id="chat-login-password" name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Your password" />
+              <input id="chat-login-password" name="password" type="password" required minlength="10" autocomplete="current-password" placeholder="Your password" />
             </label>
             <p class="chat-intake-error" id="chat-signin-error" hidden></p>
             <button type="submit" class="btn btn-fill">Sign in &amp; enter</button>
@@ -77,15 +77,15 @@
           </form>
 
           <form class="chat-intake welcome-form" id="chat-reset" hidden autocomplete="on">
-            <p class="chat-intake-title">Set new password</p>
-            <p class="chat-verify-hint" id="chat-reset-hint">Enter the 6-digit code and your new password.</p>
+            <p class="chat-intake-title">Set New password (min 10 chars)</p>
+            <p class="chat-verify-hint" id="chat-reset-hint">Enter the verification code and your New password (min 10 chars).</p>
             <label>
               Code
-              <input id="chat-reset-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
+              <input id="chat-reset-code" name="code" type="text" inputmode="text"  maxlength="96" required placeholder="Paste code from email" />
             </label>
             <label>
-              New password
-              <input id="chat-reset-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="New password" />
+              New password (min 10 chars)
+              <input id="chat-reset-password" name="password" type="password" required minlength="10" autocomplete="new-password" placeholder="New password (min 10 chars)" />
             </label>
             <p class="chat-intake-error" id="chat-reset-error" hidden></p>
             <button type="submit" class="btn btn-fill">Update password &amp; enter</button>
@@ -99,7 +99,7 @@
             </label>
             <label>
               Password
-              <input id="chat-reg-password" name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Create a password" />
+              <input id="chat-reg-password" name="password" type="password" required minlength="10" autocomplete="new-password" placeholder="Password (min 10 chars)" />
             </label>
             <label>
               Name
@@ -115,11 +115,11 @@
 
           <form class="chat-intake welcome-form" id="chat-verify" hidden autocomplete="one-time-code">
             <p class="chat-intake-title">Verify your email</p>
-            <p class="chat-verify-hint" id="chat-verify-hint">Enter the 6-digit code we sent you — then you’re in.</p>
+            <p class="chat-verify-hint" id="chat-verify-hint">Enter the verification code we sent you — then you’re in.</p>
             <p class="chat-code-box" id="chat-verify-code-box" hidden></p>
             <label>
               Code
-              <input id="chat-verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required placeholder="6-digit code" />
+              <input id="chat-verify-code" name="code" type="text" inputmode="text"  maxlength="96" required placeholder="Paste code from email" />
             </label>
             <p class="chat-intake-error" id="chat-verify-error" hidden></p>
             <button type="submit" class="btn btn-fill">Verify &amp; enter</button>
@@ -279,8 +279,8 @@
 
             <form id="player-password-form" class="player-card" autocomplete="on">
               <h3>Password</h3>
-              <label>Current password <input id="set-pass-current" type="password" required minlength="6" autocomplete="current-password" /></label>
-              <label>New password <input id="set-pass-new" type="password" required minlength="6" autocomplete="new-password" /></label>
+              <label>Current password <input id="set-pass-current" type="password" required minlength="10" autocomplete="current-password" /></label>
+              <label>New password (min 10 chars) <input id="set-pass-new" type="password" required minlength="10" autocomplete="new-password" /></label>
               <p class="chat-intake-error" id="set-pass-error" hidden></p>
               <p class="player-settings-ok" id="set-pass-ok" hidden></p>
               <button type="submit" class="btn btn-fill">Update password</button>
