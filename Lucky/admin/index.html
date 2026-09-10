@@ -55,6 +55,7 @@
           <button type="button" class="nav-btn is-active" data-tab="chat" data-title="Chats">
             Chats <span class="nav-badge" id="chat-nav-badge" hidden>0</span>
           </button>
+          <button type="button" class="nav-btn" data-tab="dashboard" data-title="Dashboard" data-admin-only>Dashboard</button>
           <button type="button" class="nav-btn" data-tab="games" data-title="Games" data-admin-only>Games</button>
           <button type="button" class="nav-btn" data-tab="winners" data-title="Top 3">Top 3</button>
           <button type="button" class="nav-btn" data-tab="facebook" data-title="Facebook" data-admin-only>Facebook</button>
@@ -63,11 +64,11 @@
           <button type="button" class="nav-btn" data-tab="spin" data-title="Spin game">Spin game</button>
           <button type="button" class="nav-btn" data-tab="customers" data-title="Customers">Customers</button>
           <button type="button" class="nav-btn" data-tab="users" data-title="Users" data-admin-only>Users</button>
-          <button type="button" class="nav-btn" data-tab="push" data-title="Push" data-admin-only>Push</button>
+          <button type="button" class="nav-btn" data-tab="push" data-title="Notify">Notify</button>
           <button type="button" class="nav-btn" data-tab="deposits" data-title="Deposits" data-admin-only>Deposits</button>
           <button type="button" class="nav-btn" data-tab="withdrawals" data-title="Withdrawals" data-admin-only>Withdrawals</button>
           <button type="button" class="nav-btn" data-tab="players" data-title="Players" data-admin-only>Players</button>
-          <button type="button" class="nav-btn" data-tab="juwa" data-title="Add funds" data-admin-only>Add funds</button>
+          <button type="button" class="nav-btn" data-tab="juwa" data-title="Add funds">Add funds</button>
         </nav>
         <div class="side-foot">
           <p class="signed-in" id="signed-in"></p>
@@ -98,7 +99,9 @@
                   <strong id="thread-name">Select a conversation</strong>
                   <div class="thread-contact" id="thread-contact" hidden></div>
                 </div>
+                <button type="button" class="btn-mini danger" id="thread-delete-btn" hidden>Delete chat</button>
               </div>
+              <span class="status" id="chat-status" style="margin:0.35rem 0.75rem"></span>
               <div class="juwa-banner" id="juwa-banner" hidden>
                 <div class="juwa-banner-copy">
                   <strong id="juwa-banner-title">Juwa fund request</strong>
@@ -137,6 +140,40 @@
                 </div>
               </form>
             </div>
+          </div>
+        </section>
+
+        <section class="panel" id="tab-dashboard" data-admin-only>
+          <header class="panel-head row">
+            <div>
+              <h2>Dashboard</h2>
+              <p>Daily deposits in, withdrawals out, and net by player.</p>
+            </div>
+            <label>
+              Date
+              <input type="date" id="dashboard-date" />
+            </label>
+          </header>
+          <div class="user-form-grid" id="dashboard-totals" style="margin-bottom:1rem">
+            <div class="edit-card"><strong id="dash-in">$0.00</strong><p>In (deposits)</p></div>
+            <div class="edit-card"><strong id="dash-out">$0.00</strong><p>Out (withdrawals)</p></div>
+            <div class="edit-card"><strong id="dash-net">$0.00</strong><p>Net</p></div>
+          </div>
+          <span class="status" id="dashboard-status"></span>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>In</th>
+                  <th>Out</th>
+                  <th>Net</th>
+                  <th>Deposits</th>
+                  <th>Withdrawals</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-body"></tbody>
+            </table>
           </div>
         </section>
 
@@ -322,8 +359,12 @@
           <header class="panel-head row">
             <div>
               <h2>Customers</h2>
-              <p>All customer names, phone numbers, and emails from the site chat.</p>
+              <p>Search by name. Open history for deposits, withdrawals, spins, and in/out totals.</p>
             </div>
+            <label>
+              Search
+              <input type="search" id="customer-search" placeholder="Player name…" autocomplete="off" />
+            </label>
           </header>
 
           <form class="user-form" id="add-customer-form">
@@ -362,13 +403,50 @@
               <tbody id="customers-body"></tbody>
             </table>
           </div>
+
+          <div id="customer-history" hidden style="margin-top:1.5rem">
+            <header class="panel-head row">
+              <div>
+                <h3 id="customer-history-title">History</h3>
+                <p id="customer-history-totals"></p>
+              </div>
+              <button type="button" class="btn btn-line" id="customer-history-close">Close</button>
+            </header>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr><th colspan="4">Deposits</th></tr>
+                  <tr><th>When</th><th>Method</th><th>Amount</th><th>Games</th></tr>
+                </thead>
+                <tbody id="customer-history-deposits"></tbody>
+              </table>
+            </div>
+            <div class="table-wrap" style="margin-top:1rem">
+              <table class="data-table">
+                <thead>
+                  <tr><th colspan="4">Withdrawals</th></tr>
+                  <tr><th>When</th><th>Method</th><th>Amount</th><th>Games</th></tr>
+                </thead>
+                <tbody id="customer-history-withdrawals"></tbody>
+              </table>
+            </div>
+            <div class="table-wrap" style="margin-top:1rem">
+              <table class="data-table">
+                <thead>
+                  <tr><th colspan="4">Spins</th></tr>
+                  <tr><th>When</th><th>Prize</th><th>Claimed</th><th>Contact</th></tr>
+                </thead>
+                <tbody id="customer-history-spins"></tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <section class="panel" id="tab-users" data-admin-only>
           <header class="panel-head row">
             <div>
               <h2>Users</h2>
-              <p>Add Admin (full access) or Support (chat, spin, top 3, customers).</p>
+              <p>Add Admin (full access) or Support (chats, spin, top 3, customers, Notify, Add funds).</p>
             </div>
           </header>
 
@@ -419,27 +497,22 @@
 
         <section class="panel" id="tab-push">
           <header class="panel-head">
-            <h2>Push notifications</h2>
-            <p>Send a notification to phones that enabled alerts on the website.</p>
+            <h2>Notify</h2>
+            <p>Send bonus and offer alerts to phones that enabled notifications on the site.</p>
             <p id="push-meta" class="status" style="margin-top:0.5rem"></p>
           </header>
+          <div class="panel-actions" id="push-templates" style="flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+            <button type="button" class="btn btn-line" data-push-tpl="welcome">Welcome bonus</button>
+            <button type="button" class="btn btn-line" data-push-tpl="deposit">Deposit match</button>
+            <button type="button" class="btn btn-line" data-push-tpl="spin">Free spin</button>
+            <button type="button" class="btn btn-line" data-push-tpl="cashback">Cashback</button>
+            <button type="button" class="btn btn-line" data-push-tpl="weekend">Weekend offer</button>
+          </div>
           <form class="contact-form" id="push-form">
-            <label>
-              Title
-              <input type="text" id="push-title" maxlength="80" value="Slot Valley" required />
-            </label>
-            <label>
-              Message
-              <input type="text" id="push-body" maxlength="180" placeholder="New update for players" required />
-            </label>
-            <label>
-              Open URL (optional)
-              <input type="text" id="push-url" placeholder="/" value="/" />
-            </label>
-            <label>
-              Icon URL (optional)
-              <input type="text" id="push-icon" value="/assets/icons/icon-192.png" />
-            </label>
+            <label>Title <input type="text" id="push-title" maxlength="80" value="Slot Valley" required /></label>
+            <label>Message <input type="text" id="push-body" maxlength="180" placeholder="New update for players" required /></label>
+            <label>Open URL (optional) <input type="text" id="push-url" placeholder="/" value="/" /></label>
+            <label>Icon URL (optional) <input type="text" id="push-icon" value="/assets/icons/icon-192.png" /></label>
             <div class="panel-actions">
               <button type="submit" class="btn btn-gold">Send to all devices</button>
               <span class="status" id="push-status"></span>
@@ -447,55 +520,74 @@
           </form>
         </section>
 
-        <section class="panel" id="tab-deposits">
+        <section class="panel" id="tab-deposits" data-admin-only>
           <header class="panel-head row">
             <div>
-              <h2>Player deposits</h2>
-              <p>Approve or reject deposit requests from /app/</p>
+              <h2>Deposits</h2>
+              <p>Track money in — player name, method, amount, and games.</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-deposits-btn">Refresh</button>
           </header>
-          <div class="table-wrap">
+          <form class="user-form" id="deposit-form">
+            <input type="hidden" id="deposit-id" value="" />
+            <div class="user-form-grid user-form-grid-4">
+              <label>Player name <input type="text" id="deposit-player" required maxlength="80" /></label>
+              <label>Method <input type="text" id="deposit-method" list="ledger-methods" required maxlength="60" /></label>
+              <label>Amount <input type="number" id="deposit-amount" min="0.01" step="0.01" required /></label>
+              <label>Games <input type="text" id="deposit-games" list="ledger-games" maxlength="120" placeholder="Juwa, GameVault…" /></label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold" id="deposit-save-btn">Add deposit</button>
+              <button type="button" class="btn btn-line" id="deposit-cancel-btn" hidden>Cancel edit</button>
+              <span class="status" id="deposits-status"></span>
+            </div>
+          </form>
+          <div class="table-wrap" style="margin-top:1rem">
             <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Amount</th>
-                  <th>Method</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th>When</th><th>Player</th><th>Method</th><th>Amount</th><th>Games</th><th>Actions</th></tr></thead>
               <tbody id="deposits-body"></tbody>
             </table>
           </div>
-          <span class="status" id="deposits-status"></span>
         </section>
 
-        <section class="panel" id="tab-withdrawals">
+        <section class="panel" id="tab-withdrawals" data-admin-only>
           <header class="panel-head row">
             <div>
-              <h2>Player withdrawals</h2>
-              <p>Approve or reject withdraw requests</p>
+              <h2>Withdrawals</h2>
+              <p>Track money out — player name, method, amount, and games.</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-withdrawals-btn">Refresh</button>
           </header>
-          <div class="table-wrap">
+          <form class="user-form" id="withdrawal-form">
+            <input type="hidden" id="withdrawal-id" value="" />
+            <div class="user-form-grid user-form-grid-4">
+              <label>Player name <input type="text" id="withdrawal-player" required maxlength="80" /></label>
+              <label>Method <input type="text" id="withdrawal-method" list="ledger-methods" required maxlength="60" /></label>
+              <label>Amount <input type="number" id="withdrawal-amount" min="0.01" step="0.01" required /></label>
+              <label>Games <input type="text" id="withdrawal-games" list="ledger-games" maxlength="120" placeholder="Juwa, GameVault…" /></label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-gold" id="withdrawal-save-btn">Add withdrawal</button>
+              <button type="button" class="btn btn-line" id="withdrawal-cancel-btn" hidden>Cancel edit</button>
+              <span class="status" id="withdrawals-status"></span>
+            </div>
+          </form>
+          <div class="table-wrap" style="margin-top:1rem">
             <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Amount</th>
-                  <th>Destination</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th>When</th><th>Player</th><th>Method</th><th>Amount</th><th>Games</th><th>Actions</th></tr></thead>
               <tbody id="withdrawals-body"></tbody>
             </table>
           </div>
-          <span class="status" id="withdrawals-status"></span>
         </section>
+
+        <datalist id="ledger-methods">
+          <option value="Cash App"></option>
+          <option value="Venmo"></option>
+          <option value="PayPal"></option>
+          <option value="Chime"></option>
+          <option value="Crypto"></option>
+        </datalist>
+        <datalist id="ledger-games"></datalist>
 
         <section class="panel" id="tab-players">
           <header class="panel-head row">
@@ -529,10 +621,36 @@
           <header class="panel-head row">
             <div>
               <h2>Add-funds ops</h2>
-              <p>Chat requests for Juwa, Juwa 2, MilkyWay, GameVault, and Orion. Auto-add replies with the game name.</p>
+              <p>Manual add for Juwa, Juwa 2, MilkyWay, GameVault, and Orion — available to Admin and Support.</p>
             </div>
             <button type="button" class="btn btn-gold" id="refresh-juwa-btn">Refresh</button>
           </header>
+
+          <form class="user-form" id="juwa-manual-form">
+            <h3>Manual add funds</h3>
+            <div class="user-form-grid user-form-grid-4">
+              <label>
+                Game
+                <select id="juwa-manual-game" required>
+                  <option value="">Select game</option>
+                  <option value="juwa">Juwa</option>
+                  <option value="juwa2">Juwa 2</option>
+                  <option value="milkyway">MilkyWay</option>
+                  <option value="gamevault">GameVault</option>
+                  <option value="orion">Orion</option>
+                </select>
+              </label>
+              <label>Username <input type="text" id="juwa-manual-username" maxlength="64" required autocomplete="off" /></label>
+              <label>Method <input type="text" id="juwa-manual-method" list="ledger-methods" maxlength="60" required /></label>
+              <label>Amount <input type="number" id="juwa-manual-amount" min="0.01" step="0.01" required /></label>
+            </div>
+            <div class="panel-actions">
+              <button type="submit" class="btn btn-line" id="juwa-manual-save">Save request</button>
+              <button type="button" class="btn btn-gold" id="juwa-manual-save-added">Save &amp; mark added</button>
+              <span class="status" id="juwa-manual-status"></span>
+            </div>
+          </form>
+
           <p class="status" id="juwa-ops-status"></p>
           <div class="table-wrap">
             <table class="data-table">

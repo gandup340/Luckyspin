@@ -48,7 +48,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
       return { ok: false, skipped: true, reason: "auto-reply disabled" };
     }
     if (!row?.conversationId || typeof postSupportReply !== "function") {
-      return { ok: false, error: "No conversation to reply" };
+      return { ok: true, skipped: true, reason: "no conversation" };
     }
     const result = await postSupportReply(row.conversationId, text);
     if (result.ok) {
@@ -506,6 +506,78 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     const text = String(req.body?.text || "");
     const conversationId = String(req.body?.conversationId || "");
     const messageId = String(req.body?.messageId || "");
+    const manual = Boolean(req.body?.manual);
+    const method = String(req.body?.method || "").trim().slice(0, 60);
+
+    // Manual add-funds form (Admin + Support) — no chat required.
+    if (manual) {
+      const game = String(req.body?.game || "").trim().toLowerCase();
+      const username = String(req.body?.username || "").trim().slice(0, 64);
+      const amount = Number(req.body?.amount);
+      const markAdded = Boolean(req.body?.markAdded);
+      if (!game) return res.status(400).json({ error: "Game is required" });
+      if (!username) return res.status(400).json({ error: "Username is required" });
+      if (!method) return res.status(400).json({ error: "Method is required" });
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: "Enter a valid amount" });
+      }
+      const amountRounded = Math.round(amount * 100) / 100;
+      const admin = actorName(req);
+      const created = store.createRequest({
+        ok: true,
+        conversationId: "",
+        messageId: "",
+        messageText: `Manual: ${method} · ${game} · ${username} · ${amountRounded}`,
+        game,
+        username,
+        amount: amountRounded,
+        method,
+        missing: [],
+        reason: "Manual add-funds form",
+        usernames: [username],
+      });
+      let request = created.request;
+      store.addAudit({
+        type: "manual_request",
+        requestId: request?.id,
+        admin,
+        username,
+        amount: amountRounded,
+        status: request?.status,
+        message: markAdded ? "Manual save & mark added" : "Manual save request",
+      });
+
+      if (markAdded && request?.id) {
+        store.updateRequest(request.id, {
+          status: "success",
+          confirmedBy: admin,
+          confirmedAt: Date.now(),
+          missing: [],
+          error: "",
+          reason: "Marked added (manual form)",
+          result: { ok: true, status: "success", detail: `Manual mark added · ${method}` },
+          playerRepliedAt: Date.now(),
+        });
+        store.addAudit({
+          type: "marked_added",
+          requestId: request.id,
+          admin,
+          username,
+          amount: amountRounded,
+          status: "success",
+          message: `Manual mark added · method ${method}`,
+        });
+        request = store.getRequest(request.id);
+      }
+
+      return res.json({
+        ok: true,
+        request,
+        markedAdded: markAdded,
+        message: markAdded ? "Saved and marked added." : "Request saved.",
+      });
+    }
+
     if (!conversationId) return res.status(400).json({ error: "conversationId required" });
 
     const parsed = parseJuwaFundRequest(text);
@@ -539,7 +611,6 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     let request = created.request;
     if (parsed.ok && request && !created.error) {
       // AUTO GAME DEPOSIT DISABLED — create request only; admin must confirm manually.
-      // request = await startAddIfReady(request, actorName(req), "Auto-started from chat (no admin confirm)");
     }
 
     res.json({ ...created, request, parsed });
@@ -555,7 +626,7 @@ function mountJuwaApi(app, { auth, requireAdmin, dataDir, readJson, writeJson, p
     res.json({ request: row });
   });
 
-  app.get("/api/admin/juwa/audits", auth, requireAdmin, (req, res) => {
+  app.get("/api/admin/juwa/audits", auth, (req, res) => {
     res.json({ audits: store.listAudits({ limit: Number(req.query.limit) || 100 }) });
   });
 

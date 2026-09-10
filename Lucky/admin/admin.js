@@ -139,6 +139,8 @@
   threadBack?.addEventListener("click", () => {
     activeId = null;
     threadForm.hidden = true;
+    const delBtn = document.getElementById("thread-delete-btn");
+    if (delBtn) delBtn.hidden = true;
     if (threadName) threadName.textContent = "Select a conversation";
     if (threadContact) threadContact.hidden = true;
     threadBody.innerHTML = "";
@@ -157,6 +159,10 @@
       if (mobileTopbarTitle) {
         mobileTopbarTitle.textContent = btn.dataset.title || btn.textContent.trim();
       }
+      if (btn.dataset.tab === "dashboard" && isAdminUser()) loadDashboard().catch(() => {});
+      if (btn.dataset.tab === "deposits" && isAdminUser()) loadPlayerDeposits().catch(() => {});
+      if (btn.dataset.tab === "withdrawals" && isAdminUser()) loadPlayerWithdrawals().catch(() => {});
+      if (btn.dataset.tab === "push") loadPush().catch(() => {});
       if (btn.dataset.tab === "chat") showChatList();
       setMenuOpen(false);
     });
@@ -221,19 +227,21 @@
       await loadPlayerDeposits();
       await loadPlayerWithdrawals();
       await loadPlayersDb();
+      await loadDashboard();
     } else {
-      config = { winners: [], spinPrizes: [] };
+      config = { winners: [], spinPrizes: [], games: [] };
       const winnersData = await api("/api/admin/winners");
       config.winners = winnersData.winners || [];
       renderWinners();
       await loadSpin();
       await loadCustomers();
+      await loadPush();
     }
 
     await refreshChats();
     connectWs();
     setupJuwaUi();
-    if (isAdminUser()) await loadJuwaOps();
+    await loadJuwaOps();
   }
 
   async function loadSpin() {
@@ -548,6 +556,28 @@
     }
   }
 
+  const PUSH_TEMPLATES = {
+    welcome: { title: "Welcome bonus", body: "Claim your welcome bonus today at Slot Valley.", url: "/" },
+    deposit: { title: "Deposit match", body: "Deposit now and get a match bonus. Limited time.", url: "/" },
+    spin: { title: "Free spin", body: "You have a free spin waiting — open the site to play.", url: "/#spin" },
+    cashback: { title: "Cashback offer", body: "Weekend cashback is live. Check chat for details.", url: "/" },
+    weekend: { title: "Weekend special", body: "Extra rewards this weekend only. Don't miss out.", url: "/" },
+  };
+
+  document.getElementById("push-templates")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-push-tpl]");
+    if (!btn) return;
+    const tpl = PUSH_TEMPLATES[btn.dataset.pushTpl];
+    if (!tpl) return;
+    const title = document.getElementById("push-title");
+    const body = document.getElementById("push-body");
+    const url = document.getElementById("push-url");
+    if (title) title.value = tpl.title;
+    if (body) body.value = tpl.body;
+    if (url) url.value = tpl.url || "/";
+    setStatus("push-status", "Template loaded — edit and send.");
+  });
+
   document.getElementById("push-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -574,50 +604,121 @@
     return `$${(Number(cents || 0) / 100).toFixed(2)}`;
   }
 
+
+  function moneyUsd(amount) {
+    return `$${Number(amount || 0).toFixed(2)}`;
+  }
+
+  function fillLedgerGameOptions() {
+    const list = document.getElementById("ledger-games");
+    if (!list) return;
+    const names = (config?.games || []).map((g) => g.name).filter(Boolean);
+    const defaults = ["Juwa", "Juwa2", "GameVault", "MilkyWay", "Orion"];
+    const all = [...new Set([...names, ...defaults])];
+    list.innerHTML = all.map((n) => `<option value="${esc(n)}"></option>`).join("");
+  }
+
+  function resetDepositForm() {
+    const id = document.getElementById("deposit-id");
+    if (id) id.value = "";
+    document.getElementById("deposit-form")?.reset();
+    const btn = document.getElementById("deposit-save-btn");
+    if (btn) btn.textContent = "Add deposit";
+    const cancel = document.getElementById("deposit-cancel-btn");
+    if (cancel) cancel.hidden = true;
+  }
+
+  function resetWithdrawalForm() {
+    const id = document.getElementById("withdrawal-id");
+    if (id) id.value = "";
+    document.getElementById("withdrawal-form")?.reset();
+    const btn = document.getElementById("withdrawal-save-btn");
+    if (btn) btn.textContent = "Add withdrawal";
+    const cancel = document.getElementById("withdrawal-cancel-btn");
+    if (cancel) cancel.hidden = true;
+  }
+
+  async function loadDashboard() {
+    const body = document.getElementById("dashboard-body");
+    if (!body) return;
+    const dateEl = document.getElementById("dashboard-date");
+    const date = dateEl?.value || new Date().toISOString().slice(0, 10);
+    if (dateEl && !dateEl.value) dateEl.value = date;
+    try {
+      const data = await api(`/api/admin/dashboard?date=${encodeURIComponent(date)}`);
+      const inEl = document.getElementById("dash-in");
+      const outEl = document.getElementById("dash-out");
+      const netEl = document.getElementById("dash-net");
+      if (inEl) inEl.textContent = moneyUsd(data.totalIn);
+      if (outEl) outEl.textContent = moneyUsd(data.totalOut);
+      if (netEl) netEl.textContent = moneyUsd(data.net);
+      const players = data.players || [];
+      body.innerHTML = players.length
+        ? players
+            .map(
+              (p) => `<tr>
+            <td>${esc(p.playerName)}</td>
+            <td>${moneyUsd(p.in)}</td>
+            <td>${moneyUsd(p.out)}</td>
+            <td>${moneyUsd(p.net)}</td>
+            <td>${esc(p.deposits)}</td>
+            <td>${esc(p.withdrawals)}</td>
+          </tr>`
+            )
+            .join("")
+        : `<tr class="table-empty"><td colspan="6">No deposits or withdrawals on this day.</td></tr>`;
+      setStatus("dashboard-status", `${data.depositCount || 0} deposits · ${data.withdrawalCount || 0} withdrawals`);
+    } catch (err) {
+      setStatus("dashboard-status", err.message, true);
+    }
+  }
+
   async function loadPlayerDeposits() {
     const body = document.getElementById("deposits-body");
     if (!body) return;
+    fillLedgerGameOptions();
     try {
-      const data = await api("/api/admin/player-deposits");
-      body.innerHTML = (data.deposits || [])
-        .map((d) => {
-          const actions =
-            d.status === "pending"
-              ? `<button type="button" data-dep-approve="${d.id}">Approve</button>
-                 <button type="button" class="danger" data-dep-reject="${d.id}">Reject</button>`
-              : "—";
-          return `<tr>
-            <td>${esc(d.name || d.username || "")}</td>
-            <td>${money(d.amountCents)}</td>
-            <td>${esc(d.method || "")}<br/><small>${esc(d.reference || "")}</small></td>
-            <td>${esc(d.status)}</td>
-            <td>${actions}</td>
-          </tr>`;
-        })
-        .join("");
-      body.querySelectorAll("[data-dep-approve]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          try {
-            await api(`/api/admin/player-deposits/${btn.dataset.depApprove}/approve`, {
-              method: "POST",
-              body: "{}",
-            });
-            await loadPlayerDeposits();
-            setStatus("deposits-status", "Approved");
-          } catch (err) {
-            setStatus("deposits-status", err.message, true);
-          }
+      const data = await api("/api/admin/ledger/deposits");
+      const rows = data.deposits || [];
+      body.innerHTML = rows.length
+        ? rows
+            .map(
+              (d) => `<tr data-id="${esc(d.id)}">
+            <td>${d.createdAt ? new Date(d.createdAt).toLocaleString() : "—"}</td>
+            <td>${esc(d.playerName)}</td>
+            <td>${esc(d.method)}</td>
+            <td>${moneyUsd(d.amount)}</td>
+            <td>${esc(d.games || "")}</td>
+            <td class="user-actions">
+              <button type="button" class="btn-mini" data-edit-deposit="${esc(d.id)}">Edit</button>
+              <button type="button" class="btn-mini danger" data-del-deposit="${esc(d.id)}">Delete</button>
+            </td>
+          </tr>`
+            )
+            .join("")
+        : `<tr class="table-empty"><td colspan="6">No deposits yet.</td></tr>`;
+
+      body.querySelectorAll("[data-edit-deposit]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const row = rows.find((r) => r.id === btn.dataset.editDeposit);
+          if (!row) return;
+          document.getElementById("deposit-id").value = row.id;
+          document.getElementById("deposit-player").value = row.playerName || "";
+          document.getElementById("deposit-method").value = row.method || "";
+          document.getElementById("deposit-amount").value = row.amount;
+          document.getElementById("deposit-games").value = row.games || "";
+          document.getElementById("deposit-save-btn").textContent = "Save changes";
+          document.getElementById("deposit-cancel-btn").hidden = false;
         });
       });
-      body.querySelectorAll("[data-dep-reject]").forEach((btn) => {
+      body.querySelectorAll("[data-del-deposit]").forEach((btn) => {
         btn.addEventListener("click", async () => {
+          if (!confirm("Delete this deposit?")) return;
           try {
-            await api(`/api/admin/player-deposits/${btn.dataset.depReject}/reject`, {
-              method: "POST",
-              body: "{}",
-            });
+            await api(`/api/admin/ledger/deposits/${btn.dataset.delDeposit}`, { method: "DELETE" });
+            setStatus("deposits-status", "Deleted");
             await loadPlayerDeposits();
-            setStatus("deposits-status", "Rejected");
+            await loadDashboard();
           } catch (err) {
             setStatus("deposits-status", err.message, true);
           }
@@ -631,47 +732,49 @@
   async function loadPlayerWithdrawals() {
     const body = document.getElementById("withdrawals-body");
     if (!body) return;
+    fillLedgerGameOptions();
     try {
-      const data = await api("/api/admin/player-withdrawals");
-      body.innerHTML = (data.withdrawals || [])
-        .map((w) => {
-          const actions =
-            w.status === "pending"
-              ? `<button type="button" data-wd-approve="${w.id}">Approve</button>
-                 <button type="button" class="danger" data-wd-reject="${w.id}">Reject</button>`
-              : "—";
-          return `<tr>
-            <td>${esc(w.name || w.username || "")}</td>
-            <td>${money(w.amountCents)}</td>
-            <td>${esc(w.method || "")}<br/><small>${esc(w.destination || "")}</small></td>
-            <td>${esc(w.status)}</td>
-            <td>${actions}</td>
-          </tr>`;
-        })
-        .join("");
-      body.querySelectorAll("[data-wd-approve]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          try {
-            await api(`/api/admin/player-withdrawals/${btn.dataset.wdApprove}/approve`, {
-              method: "POST",
-              body: "{}",
-            });
-            await loadPlayerWithdrawals();
-            setStatus("withdrawals-status", "Approved");
-          } catch (err) {
-            setStatus("withdrawals-status", err.message, true);
-          }
+      const data = await api("/api/admin/ledger/withdrawals");
+      const rows = data.withdrawals || [];
+      body.innerHTML = rows.length
+        ? rows
+            .map(
+              (w) => `<tr data-id="${esc(w.id)}">
+            <td>${w.createdAt ? new Date(w.createdAt).toLocaleString() : "—"}</td>
+            <td>${esc(w.playerName)}</td>
+            <td>${esc(w.method)}</td>
+            <td>${moneyUsd(w.amount)}</td>
+            <td>${esc(w.games || "")}</td>
+            <td class="user-actions">
+              <button type="button" class="btn-mini" data-edit-wd="${esc(w.id)}">Edit</button>
+              <button type="button" class="btn-mini danger" data-del-wd="${esc(w.id)}">Delete</button>
+            </td>
+          </tr>`
+            )
+            .join("")
+        : `<tr class="table-empty"><td colspan="6">No withdrawals yet.</td></tr>`;
+
+      body.querySelectorAll("[data-edit-wd]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const row = rows.find((r) => r.id === btn.dataset.editWd);
+          if (!row) return;
+          document.getElementById("withdrawal-id").value = row.id;
+          document.getElementById("withdrawal-player").value = row.playerName || "";
+          document.getElementById("withdrawal-method").value = row.method || "";
+          document.getElementById("withdrawal-amount").value = row.amount;
+          document.getElementById("withdrawal-games").value = row.games || "";
+          document.getElementById("withdrawal-save-btn").textContent = "Save changes";
+          document.getElementById("withdrawal-cancel-btn").hidden = false;
         });
       });
-      body.querySelectorAll("[data-wd-reject]").forEach((btn) => {
+      body.querySelectorAll("[data-del-wd]").forEach((btn) => {
         btn.addEventListener("click", async () => {
+          if (!confirm("Delete this withdrawal?")) return;
           try {
-            await api(`/api/admin/player-withdrawals/${btn.dataset.wdReject}/reject`, {
-              method: "POST",
-              body: "{}",
-            });
+            await api(`/api/admin/ledger/withdrawals/${btn.dataset.delWd}`, { method: "DELETE" });
+            setStatus("withdrawals-status", "Deleted");
             await loadPlayerWithdrawals();
-            setStatus("withdrawals-status", "Rejected");
+            await loadDashboard();
           } catch (err) {
             setStatus("withdrawals-status", err.message, true);
           }
@@ -681,6 +784,63 @@
       setStatus("withdrawals-status", err.message, true);
     }
   }
+
+  document.getElementById("deposit-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = String(document.getElementById("deposit-id")?.value || "");
+    const payload = {
+      playerName: document.getElementById("deposit-player").value,
+      method: document.getElementById("deposit-method").value,
+      amount: Number(document.getElementById("deposit-amount").value),
+      games: document.getElementById("deposit-games").value,
+    };
+    try {
+      if (id) {
+        await api(`/api/admin/ledger/deposits/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+        setStatus("deposits-status", "Updated");
+      } else {
+        await api("/api/admin/ledger/deposits", { method: "POST", body: JSON.stringify(payload) });
+        setStatus("deposits-status", "Added");
+      }
+      resetDepositForm();
+      await loadPlayerDeposits();
+      await loadDashboard();
+    } catch (err) {
+      setStatus("deposits-status", err.message, true);
+    }
+  });
+
+  document.getElementById("deposit-cancel-btn")?.addEventListener("click", () => resetDepositForm());
+
+  document.getElementById("withdrawal-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = String(document.getElementById("withdrawal-id")?.value || "");
+    const payload = {
+      playerName: document.getElementById("withdrawal-player").value,
+      method: document.getElementById("withdrawal-method").value,
+      amount: Number(document.getElementById("withdrawal-amount").value),
+      games: document.getElementById("withdrawal-games").value,
+    };
+    try {
+      if (id) {
+        await api(`/api/admin/ledger/withdrawals/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+        setStatus("withdrawals-status", "Updated");
+      } else {
+        await api("/api/admin/ledger/withdrawals", { method: "POST", body: JSON.stringify(payload) });
+        setStatus("withdrawals-status", "Added");
+      }
+      resetWithdrawalForm();
+      await loadPlayerWithdrawals();
+      await loadDashboard();
+    } catch (err) {
+      setStatus("withdrawals-status", err.message, true);
+    }
+  });
+
+  document.getElementById("withdrawal-cancel-btn")?.addEventListener("click", () => resetWithdrawalForm());
+  document.getElementById("dashboard-date")?.addEventListener("change", () => {
+    loadDashboard().catch(() => {});
+  });
 
   async function loadPlayersDb() {
     const body = document.getElementById("players-body");
@@ -850,16 +1010,96 @@
     renderCustomers();
   }
 
+  function filteredCustomers() {
+    const q = String(document.getElementById("customer-search")?.value || "")
+      .trim()
+      .toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => String(c.name || "").toLowerCase().includes(q));
+  }
+
+  async function loadCustomerHistory(id) {
+    const panel = document.getElementById("customer-history");
+    if (!panel) return;
+    try {
+      const data = await api(`/api/admin/customers/${id}/history`);
+      const title = document.getElementById("customer-history-title");
+      const totals = document.getElementById("customer-history-totals");
+      if (title) title.textContent = `History — ${data.customer?.name || "Customer"}`;
+      if (totals) {
+        totals.textContent = `In ${moneyUsd(data.totalIn)} · Out ${moneyUsd(data.totalOut)} · Net ${moneyUsd(data.net)}`;
+      }
+      const depBody = document.getElementById("customer-history-deposits");
+      const wdBody = document.getElementById("customer-history-withdrawals");
+      const spinBody = document.getElementById("customer-history-spins");
+      const deps = data.deposits || [];
+      const wds = data.withdrawals || [];
+      const spins = data.spins || [];
+      if (depBody) {
+        depBody.innerHTML = deps.length
+          ? deps
+              .map(
+                (d) => `<tr>
+              <td>${d.createdAt ? new Date(d.createdAt).toLocaleString() : "—"}</td>
+              <td>${esc(d.method)}</td>
+              <td>${moneyUsd(d.amount)}</td>
+              <td>${esc(d.games || "")}</td>
+            </tr>`
+              )
+              .join("")
+          : `<tr class="table-empty"><td colspan="4">No deposits.</td></tr>`;
+      }
+      if (wdBody) {
+        wdBody.innerHTML = wds.length
+          ? wds
+              .map(
+                (w) => `<tr>
+              <td>${w.createdAt ? new Date(w.createdAt).toLocaleString() : "—"}</td>
+              <td>${esc(w.method)}</td>
+              <td>${moneyUsd(w.amount)}</td>
+              <td>${esc(w.games || "")}</td>
+            </tr>`
+              )
+              .join("")
+          : `<tr class="table-empty"><td colspan="4">No withdrawals.</td></tr>`;
+      }
+      if (spinBody) {
+        spinBody.innerHTML = spins.length
+          ? spins
+              .map(
+                (s) => `<tr>
+              <td>${s.claimedAt || s.createdAt ? new Date(s.claimedAt || s.createdAt).toLocaleString() : "—"}</td>
+              <td>${esc(s.prizeLabel || "")}</td>
+              <td>${s.claimed ? "Claimed" : "Unclaimed"}</td>
+              <td>${esc(s.name || "")}</td>
+            </tr>`
+              )
+              .join("")
+          : `<tr class="table-empty"><td colspan="4">No spins.</td></tr>`;
+      }
+      panel.hidden = false;
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      setStatus("customers-status", "History loaded");
+    } catch (err) {
+      setStatus("customers-status", err.message, true);
+    }
+  }
+
   function renderCustomers() {
     const body = document.getElementById("customers-body");
     if (!body) return;
+    const list = filteredCustomers();
 
     if (!customers.length) {
       body.innerHTML = `<tr class="table-empty"><td colspan="5">No customers yet. They appear here when someone starts a support chat.</td></tr>`;
       return;
     }
+    if (!list.length) {
+      body.innerHTML = `<tr class="table-empty"><td colspan="5">No customers match that name.</td></tr>`;
+      return;
+    }
 
-    body.innerHTML = customers
+    body.innerHTML = list
       .map(
         (c) => `
       <tr data-id="${esc(c.id)}">
@@ -868,12 +1108,19 @@
         <td data-label="Email"><input data-field="email" value="${esc(c.email || "")}" /></td>
         <td data-label="Updated">${c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "—"}</td>
         <td data-label="Actions" class="user-actions">
+          <button type="button" class="btn-mini" data-history-customer="${esc(c.id)}">History</button>
           <button type="button" class="btn-mini" data-save-customer="${esc(c.id)}">Save</button>
           <button type="button" class="btn-mini danger" data-del-customer="${esc(c.id)}">Delete</button>
         </td>
       </tr>`
       )
       .join("");
+
+    body.querySelectorAll("[data-history-customer]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        loadCustomerHistory(btn.dataset.historyCustomer).catch(() => {});
+      });
+    });
 
     body.querySelectorAll("[data-save-customer]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -908,6 +1155,12 @@
       });
     });
   }
+
+  document.getElementById("customer-search")?.addEventListener("input", () => renderCustomers());
+  document.getElementById("customer-history-close")?.addEventListener("click", () => {
+    const panel = document.getElementById("customer-history");
+    if (panel) panel.hidden = true;
+  });
 
   document.getElementById("add-customer-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1102,7 +1355,34 @@
     });
   }
 
+  document.getElementById("thread-delete-btn")?.addEventListener("click", async () => {
+    if (!isAdminUser()) {
+      setStatus("chat-status", "Only admins can delete chats", true);
+      return;
+    }
+    if (!activeId) return;
+    if (!confirm("Delete this chat permanently?")) return;
+    try {
+      await api(`/api/admin/chats/${activeId}`, { method: "DELETE" });
+      activeId = null;
+      activeMessages = [];
+      threadForm.hidden = true;
+      const delBtn = document.getElementById("thread-delete-btn");
+      if (delBtn) delBtn.hidden = true;
+      if (threadName) threadName.textContent = "Select a conversation";
+      if (threadContact) threadContact.hidden = true;
+      threadBody.innerHTML = "";
+      showChatList();
+      await refreshChats();
+      setStatus("chat-status", "Chat deleted");
+    } catch (err) {
+      setStatus("chat-status", err.message, true);
+    }
+  });
+
   async function openConvo(id) {
+    const delBtn = document.getElementById("thread-delete-btn");
+    if (delBtn) delBtn.hidden = !isAdminUser();
     activeId = id;
     const convo = await api(`/api/admin/chats/${id}`);
     activeMessages = convo.messages || [];
@@ -1518,6 +1798,32 @@
 
     document.querySelector('.nav-btn[data-tab="juwa"]')?.addEventListener("click", () => {
       loadJuwaOps().catch(() => {});
+    });
+
+    async function submitManualJuwa({ markAdded }) {
+      const game = String(document.getElementById("juwa-manual-game")?.value || "").trim();
+      const username = String(document.getElementById("juwa-manual-username")?.value || "").trim();
+      const method = String(document.getElementById("juwa-manual-method")?.value || "").trim();
+      const amount = Number(document.getElementById("juwa-manual-amount")?.value);
+      try {
+        const data = await api("/api/admin/juwa/requests", {
+          method: "POST",
+          body: JSON.stringify({ manual: true, markAdded: Boolean(markAdded), game, username, method, amount }),
+        });
+        setStatus("juwa-manual-status", data.message || "Saved");
+        document.getElementById("juwa-manual-form")?.reset();
+        await loadJuwaOps();
+      } catch (err) {
+        setStatus("juwa-manual-status", err.message, true);
+      }
+    }
+
+    document.getElementById("juwa-manual-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      submitManualJuwa({ markAdded: false }).catch(() => {});
+    });
+    document.getElementById("juwa-manual-save-added")?.addEventListener("click", () => {
+      submitManualJuwa({ markAdded: true }).catch(() => {});
     });
 
     async function markAddedAndReply() {

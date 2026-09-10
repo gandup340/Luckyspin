@@ -7,5 +7,7 @@ data/chats.json
 data/customers.json
 data/spins.json
 data/push-subscriptions.json
+data/cashflow.json
+data/juwa-ops.json
 # Keep config structure in git but rotate passwords via ADMIN_SYNC / admin panel.
 # Never commit real SMTP / TURN / Facebook secrets.

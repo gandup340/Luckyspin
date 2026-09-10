@@ -16,6 +16,7 @@ const { mountJuwaApi } = require("./juwa-api");
 const { dbEnabled, query } = require("./db");
 const { emailConfigured, smtpSettings } = require("./mail");
 const { auditLog, clientIp: auditClientIp, listAudits } = require("./audit-log");
+const { createCashflowStore } = require("./cashflow-store");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const PORT = Number(process.env.PORT) || 3000;
@@ -528,6 +529,12 @@ function getPushSubscriptions() {
 
 function savePushSubscriptions(data) {
   writeJson(PUSH_SUBS_PATH, data);
+}
+
+const cashflow = createCashflowStore(DATA_DIR, { readJson, writeJson });
+
+function actorLabel(req) {
+  return req.adminUser?.username || req.adminUser?.name || "staff";
 }
 
 function normalizePushSubscription(input) {
@@ -1979,6 +1986,119 @@ app.delete("/api/admin/customers/:id", auth, (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/admin/customers/:id/history", auth, (req, res) => {
+  const data = getCustomers();
+  const customer = (data.customers || []).find((c) => c.id === req.params.id);
+  if (!customer) return res.status(404).json({ error: "Customer not found" });
+
+  const cash = cashflow.historyForPlayer({
+    name: customer.name,
+    phone: customer.phone,
+    email: customer.email,
+  });
+
+  const digits = phoneDigits(customer.phone);
+  const email = normalizeEmail(customer.email);
+  const spins = (getSpins().spins || [])
+    .filter((s) => {
+      if (!s) return false;
+      const samePhone =
+        digits &&
+        (phoneDigits(s.phone) === digits || String(s.phoneDigits || "") === digits);
+      const sameEmail = email && normalizeEmail(s.email) === email;
+      const sameName =
+        customer.name &&
+        String(s.name || "").trim().toLowerCase() === String(customer.name).trim().toLowerCase();
+      return Boolean(samePhone || sameEmail || sameName);
+    })
+    .sort((a, b) => Number(b.claimedAt || b.createdAt || 0) - Number(a.claimedAt || a.createdAt || 0))
+    .slice(0, 100)
+    .map((s) => ({
+      id: s.id,
+      prizeLabel: s.prizeLabel,
+      claimed: Boolean(s.claimed),
+      name: s.name || "",
+      phone: s.phone || "",
+      email: s.email || "",
+      createdAt: s.createdAt,
+      claimedAt: s.claimedAt || null,
+    }));
+
+  res.json({
+    customer,
+    deposits: cash.deposits,
+    withdrawals: cash.withdrawals,
+    spins,
+    totalIn: cash.totalIn,
+    totalOut: cash.totalOut,
+    net: cash.net,
+  });
+});
+
+app.get("/api/admin/dashboard", auth, requireAdmin, (req, res) => {
+  res.json(cashflow.dashboard({ date: req.query?.date }));
+});
+
+app.get("/api/admin/ledger/deposits", auth, requireAdmin, (_req, res) => {
+  res.json({ deposits: cashflow.list("deposits") });
+});
+
+app.post("/api/admin/ledger/deposits", auth, requireAdmin, (req, res) => {
+  const result = cashflow.create("deposits", req.body, actorLabel(req));
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  auditLog({
+    category: "wallet",
+    action: "ledger_deposit_create",
+    actor: actorLabel(req),
+    actorRole: req.adminUser?.role,
+    success: true,
+    meta: { id: result.entry.id, amount: result.entry.amount },
+  });
+  res.json({ ok: true, deposit: result.entry });
+});
+
+app.put("/api/admin/ledger/deposits/:id", auth, requireAdmin, (req, res) => {
+  const result = cashflow.update("deposits", req.params.id, req.body, actorLabel(req));
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.json({ ok: true, deposit: result.entry });
+});
+
+app.delete("/api/admin/ledger/deposits/:id", auth, requireAdmin, (req, res) => {
+  const result = cashflow.remove("deposits", req.params.id);
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/ledger/withdrawals", auth, requireAdmin, (_req, res) => {
+  res.json({ withdrawals: cashflow.list("withdrawals") });
+});
+
+app.post("/api/admin/ledger/withdrawals", auth, requireAdmin, (req, res) => {
+  const result = cashflow.create("withdrawals", req.body, actorLabel(req));
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  auditLog({
+    category: "wallet",
+    action: "ledger_withdrawal_create",
+    actor: actorLabel(req),
+    actorRole: req.adminUser?.role,
+    success: true,
+    meta: { id: result.entry.id, amount: result.entry.amount },
+  });
+  res.json({ ok: true, withdrawal: result.entry });
+});
+
+app.put("/api/admin/ledger/withdrawals/:id", auth, requireAdmin, (req, res) => {
+  const result = cashflow.update("withdrawals", req.params.id, req.body, actorLabel(req));
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.json({ ok: true, withdrawal: result.entry });
+});
+
+app.delete("/api/admin/ledger/withdrawals/:id", auth, requireAdmin, (req, res) => {
+  const result = cashflow.remove("withdrawals", req.params.id);
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
 app.get("/api/admin/config", auth, requireAdmin, (_req, res) => {
   const cfg = getConfig();
   const pub = publicConfig(cfg);
@@ -1992,7 +2112,7 @@ app.get("/api/admin/config", auth, requireAdmin, (_req, res) => {
   });
 });
 
-app.get("/api/admin/push", auth, requireAdmin, (_req, res) => {
+app.get("/api/admin/push", auth, (_req, res) => {
   const store = getPushSubscriptions();
   res.json({
     configured: PUSH_ENABLED,
@@ -2000,7 +2120,7 @@ app.get("/api/admin/push", auth, requireAdmin, (_req, res) => {
   });
 });
 
-app.post("/api/admin/push/send", auth, requireAdmin, async (req, res) => {
+app.post("/api/admin/push/send", auth, async (req, res) => {
   const title = String(req.body?.title || "").trim();
   const body = String(req.body?.body || "").trim();
   const icon = String(req.body?.icon || "/assets/icons/icon-192.png").trim();
@@ -2013,6 +2133,14 @@ app.post("/api/admin/push/send", auth, requireAdmin, async (req, res) => {
   try {
     const result = await sendPushToAll({ title, body, icon, url, data, tag });
     if (!result.ok) return res.status(503).json(result);
+    auditLog({
+      category: "admin",
+      action: "push_send",
+      actor: actorLabel(req),
+      actorRole: req.adminUser?.role,
+      success: true,
+      meta: { sent: result.sent, title },
+    });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err?.message || "Failed to send notifications" });
@@ -2289,11 +2417,19 @@ app.get("/api/admin/chats/:id", auth, (req, res) => {
   res.json(convo);
 });
 
-app.delete("/api/admin/chats/:id", auth, (req, res) => {
+app.delete("/api/admin/chats/:id", auth, requireAdmin, (req, res) => {
   const data = getChats();
   data.conversations = data.conversations.filter((c) => c.id !== req.params.id);
   saveChats(data);
   broadcast({ type: "chat_deleted", conversationId: req.params.id });
+  auditLog({
+    category: "admin",
+    action: "chat_delete",
+    actor: actorLabel(req),
+    actorRole: req.adminUser?.role,
+    target: req.params.id,
+    success: true,
+  });
   res.json({ ok: true });
 });
 
